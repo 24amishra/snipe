@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { View, Text, Pressable, ScrollView, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Plus, Users } from 'lucide-react-native';
 import SnipeWordmark from '../../components/SnipeWordmark';
 import SkeletonLoader from '../../components/SkeletonLoader';
@@ -23,30 +24,32 @@ export default function TodayTab() {
   const [modalError, setModalError] = useState('');
   const [userGroups, setUserGroups] = useState<Array<{ id: string; name: string; memberCount: number }>>([]);
 
-  // Load user data: check if played today + fetch groups
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const uid = auth.currentUser?.uid;
-        if (uid) {
-          const [todayGame, groups] = await Promise.all([
-            getUserGameForDate(uid, getTodayDateString()),
-            getUserGroups(uid),
-          ]);
-          if (!cancelled) {
-            if (todayGame) setHasPlayedToday(true);
-            setUserGroups(groups);
+  // Reload user data (played status + groups) every time the tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      const load = async () => {
+        try {
+          const uid = auth.currentUser?.uid;
+          if (uid) {
+            const [todayGame, groups] = await Promise.all([
+              getUserGameForDate(uid, getTodayDateString()),
+              getUserGroups(uid),
+            ]);
+            if (!cancelled) {
+              if (todayGame) setHasPlayedToday(true);
+              setUserGroups(groups);
+            }
           }
+        } catch (e) {
+          console.log('[SNIPE] Error loading today tab:', e);
         }
-      } catch (e) {
-        console.log('[SNIPE] Error loading today tab:', e);
-      }
-      if (!cancelled) setLoading(false);
-    };
-    load();
-    return () => { cancelled = true; };
-  }, []);
+        if (!cancelled) setLoading(false);
+      };
+      load();
+      return () => { cancelled = true; };
+    }, [])
+  );
 
   // Countdown timer + quiz window check
   useEffect(() => {

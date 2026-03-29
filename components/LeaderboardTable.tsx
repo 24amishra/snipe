@@ -37,11 +37,13 @@ export default function LeaderboardTable({
             fontFamily: 'Urbanist_700Bold',
             fontSize: 20,
             color: '#FFFFFF',
+            flex: 1,
           }}
+          numberOfLines={1}
         >
           {groupName}
         </Text>
-        {isOwner && onInvite && (
+        {onInvite && (
           <Pressable onPress={onInvite} hitSlop={12}>
             <UserPlus color="#FFFFFF" size={20} />
           </Pressable>

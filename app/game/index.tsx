@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, Pressable, Dimensions, AppState } from 'react-native';
+import { View, Text, Pressable, ScrollView, Dimensions, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Animated, {
@@ -370,36 +370,39 @@ export default function GameScreen() {
 
   // Phase: Game Over
   if (phase === 'gameover') {
-    const answeredCount = results.filter((r) => r.correct || r.timeRemaining > 0).length;
-
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#000000', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
-        <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 72, color: '#FFFFFF', marginBottom: 16 }}>
-          {finalScore}
-        </Text>
-        <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 16, color: '#888888', marginBottom: 8 }}>
-          {results.length} / {TOTAL_QUESTIONS} answered
-        </Text>
-        <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 13, color: '#888888', marginBottom: 32 }}>
-          scores drop at midnight
-        </Text>
-        <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 40, color: '#FFFFFF', fontVariant: ['tabular-nums'], marginBottom: 48 }}>
-          {countdown}
-        </Text>
-        <Pressable
-          onPress={handleGoHome}
-          style={{
-            backgroundColor: '#FFFFFF',
-            borderRadius: 20,
-            paddingVertical: 18,
-            width: '100%',
-            alignItems: 'center',
-          }}
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#000000' }}>
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 32 }}
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 18, color: '#000000' }}>
-            back to home
+          <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 72, color: '#FFFFFF', marginBottom: 16 }}>
+            {finalScore}
           </Text>
-        </Pressable>
+          <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 16, color: '#888888', marginBottom: 8 }}>
+            {results.length} / {TOTAL_QUESTIONS} answered
+          </Text>
+          <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 13, color: '#888888', marginBottom: 32 }}>
+            scores drop at 8pm EST
+          </Text>
+          <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 40, color: '#FFFFFF', fontVariant: ['tabular-nums'], marginBottom: 48 }}>
+            {countdown}
+          </Text>
+          <Pressable
+            onPress={handleGoHome}
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: 20,
+              paddingVertical: 18,
+              width: '100%',
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 18, color: '#000000' }}>
+              back to home
+            </Text>
+          </Pressable>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -428,61 +431,66 @@ export default function GameScreen() {
 
         {/* Question + Answers */}
         <Animated.View style={[{ flex: 1, paddingHorizontal: 20 }, questionAnimStyle]}>
-          {/* Question card */}
-          <View
-            style={{
-              backgroundColor: '#0F0F0F',
-              borderRadius: 20,
-              padding: 28,
-              minHeight: 180,
-              justifyContent: 'center',
-              marginBottom: 24,
-            }}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
+            bounces={false}
           >
-            <Text
+            {/* Question card */}
+            <View
               style={{
-                fontFamily: 'Urbanist_700Bold',
-                fontSize: 22,
-                color: '#FFFFFF',
-                lineHeight: 32,
+                backgroundColor: '#0F0F0F',
+                borderRadius: 20,
+                padding: 28,
+                minHeight: 140,
+                justifyContent: 'center',
+                marginBottom: 24,
               }}
             >
-              {currentQuestion.question}
-            </Text>
-          </View>
-
-          {/* Answer choices - 2x2 grid */}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-            {currentQuestion.choices.map((choice, idx) => (
-              <Pressable
-                key={idx}
-                onPress={() => handleAnswer(choice)}
+              <Text
                 style={{
-                  width: '48%',
-                  backgroundColor: '#111111',
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: '#222222',
-                  padding: 20,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  minHeight: 72,
+                  fontFamily: 'Urbanist_700Bold',
+                  fontSize: 22,
+                  color: '#FFFFFF',
+                  lineHeight: 32,
                 }}
               >
-                <Text
+                {currentQuestion.question}
+              </Text>
+            </View>
+
+            {/* Answer choices - 2x2 grid */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+              {currentQuestion.choices.map((choice, idx) => (
+                <Pressable
+                  key={idx}
+                  onPress={() => handleAnswer(choice)}
                   style={{
-                    fontFamily: 'Urbanist_400Regular',
-                    fontSize: 16,
-                    color: '#FFFFFF',
-                    textAlign: 'center',
+                    width: '48%',
+                    backgroundColor: '#111111',
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: '#222222',
+                    padding: 20,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minHeight: 72,
                   }}
-                  numberOfLines={2}
                 >
-                  {choice}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+                  <Text
+                    style={{
+                      fontFamily: 'Urbanist_400Regular',
+                      fontSize: 16,
+                      color: '#FFFFFF',
+                      textAlign: 'center',
+                    }}
+                  >
+                    {choice}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
         </Animated.View>
       </View>
     </SafeAreaView>

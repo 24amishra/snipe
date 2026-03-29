@@ -67,47 +67,50 @@ export default function LeaderboardTab() {
     }, [])
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const uid = auth.currentUser?.uid;
-        if (uid) {
-          const userGroups = await getUserGroups(uid);
-          const groupsWithLb: GroupWithLeaderboard[] = await Promise.all(
-            userGroups.map(async (g) => {
-              const [lb, groupDoc] = await Promise.all([
-                getGroupLeaderboard(g.id),
-                getGroupDoc(g.id),
-              ]);
-              return {
-                id: g.id,
-                name: g.name,
-                ownerId: groupDoc?.createdBy ?? '',
-                inviteCode: groupDoc?.inviteCode ?? '',
-                entries: lb.map((e) => ({
-                  userId: e.userId,
-                  username: e.username,
-                  score: e.totalScore,
-                  wins: e.wins,
-                  streak: e.currentStreak,
-                  avgPct: e.avgPct,
-                })),
-              };
-            }),
-          );
-          if (!cancelled) setGroups(groupsWithLb);
+  // Reload groups + leaderboard data every time the tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      const load = async () => {
+        try {
+          const uid = auth.currentUser?.uid;
+          if (uid) {
+            const userGroups = await getUserGroups(uid);
+            const groupsWithLb: GroupWithLeaderboard[] = await Promise.all(
+              userGroups.map(async (g) => {
+                const [lb, groupDoc] = await Promise.all([
+                  getGroupLeaderboard(g.id),
+                  getGroupDoc(g.id),
+                ]);
+                return {
+                  id: g.id,
+                  name: g.name,
+                  ownerId: groupDoc?.createdBy ?? '',
+                  inviteCode: groupDoc?.inviteCode ?? '',
+                  entries: lb.map((e) => ({
+                    userId: e.userId,
+                    username: e.username,
+                    score: e.totalScore,
+                    wins: e.wins,
+                    streak: e.currentStreak,
+                    avgPct: e.avgPct,
+                  })),
+                };
+              }),
+            );
+            if (!cancelled) setGroups(groupsWithLb);
+          }
+        } catch (e) {
+          console.log('[SNIPE] Error loading leaderboard:', e);
         }
-      } catch (e) {
-        console.log('[SNIPE] Error loading leaderboard:', e);
-      }
-      if (!cancelled) {
-        setLoading(false);
-      }
-    };
-    load();
-    return () => { cancelled = true; };
-  }, []);
+        if (!cancelled) {
+          setLoading(false);
+        }
+      };
+      load();
+      return () => { cancelled = true; };
+    }, [])
+  );
 
   // Scroll to focused group after loading
   useEffect(() => {
