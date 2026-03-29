@@ -25,7 +25,7 @@ export async function getGroupDoc(groupId: string): Promise<(GroupDoc & { id: st
  */
 export function buildInviteLink(groupId: string, inviteCode: string): string {
   // TODO: On device, switch to snipe:// deep link scheme for app-to-app opening
-  return `https://snipe.app/join?groupId=${groupId}&code=${inviteCode}`;
+  return `https://snipe-psi.vercel.app/join?groupId=${groupId}&code=${inviteCode}`;
 }
 
 /**
