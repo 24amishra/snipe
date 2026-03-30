@@ -76,6 +76,7 @@ export default function LeaderboardTable({
       score: e.score,
       avgSpeed: e.avgSpeed,
       categoryStats: e.categoryStats,
+      currentStreak: entries.find(le => le.userId === e.userId)?.currentStreak ?? 0,
       didPlay: true,
     }));
 
@@ -87,6 +88,7 @@ export default function LeaderboardTable({
         score: 0,
         avgSpeed: 0,
         categoryStats: {} as Record<string, { correct: number; total: number }>,
+        currentStreak: e.currentStreak ?? 0,
         didPlay: false,
       }));
 
@@ -346,13 +348,23 @@ export default function LeaderboardTable({
                           fontFamily: isMe ? 'Urbanist_700Bold' : 'Urbanist_700Bold',
                           fontSize: 14,
                           color: didPlay ? (isMe ? '#FFFFFF' : '#CCCCCC') : '#444444',
-                          flex: 1,
+                          flexShrink: 1,
                         }}
                         numberOfLines={1}
                         ellipsizeMode="tail"
                       >
                         {row.username}
                       </Text>
+                      {(() => {
+                        const streak = activeView === 'allTime'
+                          ? (row as LeaderboardEntry).currentStreak ?? 0
+                          : (row as typeof todayRows[number]).currentStreak ?? 0;
+                        return streak >= 2 && didPlay ? (
+                          <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 11, color: '#FF6B35', marginLeft: 3 }}>
+                            {streak}{'\u{1F525}'}
+                          </Text>
+                        ) : null;
+                      })()}
                       {isOwner && !isMe && onRemoveMember && (
                         <Pressable
                           onPress={() => onRemoveMember(row.userId, row.username)}

@@ -40,3 +40,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Firebase Cloud Functions
+functions/lib/
+functions/node_modules/
