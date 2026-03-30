@@ -70,15 +70,19 @@ export default function LeaderboardTable({
 
     const playedUserIds = new Set((todayEntries ?? []).map((e) => e.userId));
 
-    const played = (todayEntries ?? []).map((e) => ({
-      userId: e.userId,
-      username: e.username,
-      score: e.score,
-      avgSpeed: e.avgSpeed,
-      categoryStats: e.categoryStats,
-      currentStreak: entries.find(le => le.userId === e.userId)?.currentStreak ?? 0,
-      didPlay: true,
-    }));
+    const played = (todayEntries ?? []).map((e) => {
+      const le = entries.find(le => le.userId === e.userId);
+      return {
+        userId: e.userId,
+        username: e.username,
+        score: e.score,
+        avgSpeed: e.avgSpeed,
+        categoryStats: e.categoryStats,
+        currentStreak: le?.currentStreak ?? 0,
+        wins: le?.wins ?? 0,
+        didPlay: true,
+      };
+    });
 
     const notPlayed = entries
       .filter((e) => !playedUserIds.has(e.userId))
@@ -89,6 +93,7 @@ export default function LeaderboardTable({
         avgSpeed: 0,
         categoryStats: {} as Record<string, { correct: number; total: number }>,
         currentStreak: e.currentStreak ?? 0,
+        wins: e.wins ?? 0,
         didPlay: false,
       }));
 
@@ -100,6 +105,9 @@ export default function LeaderboardTable({
       } else if (sortCol === 'avgSpeed') {
         aVal = a.avgSpeed;
         bVal = b.avgSpeed;
+      } else if (sortCol === 'wins') {
+        aVal = a.wins;
+        bVal = b.wins;
       } else {
         const aCat = a.categoryStats[sortCol];
         const bCat = b.categoryStats[sortCol];
@@ -123,6 +131,9 @@ export default function LeaderboardTable({
       } else if (sortCol === 'avgSpeed') {
         aVal = a.avgSpeed ?? 0;
         bVal = b.avgSpeed ?? 0;
+      } else if (sortCol === 'wins') {
+        aVal = a.wins ?? 0;
+        bVal = b.wins ?? 0;
       } else {
         const aCat = a.categoryStats?.[sortCol];
         const bCat = b.categoryStats?.[sortCol];
@@ -396,6 +407,7 @@ export default function LeaderboardTable({
                 }}
               >
                 {renderSortHeader('Score', 'score', COL_WIDTH)}
+                {renderSortHeader('Wins', 'wins', COL_WIDTH)}
                 {CATEGORY_COLS.map((col) => renderSortHeader(col.label, col.key, COL_WIDTH))}
                 {renderSortHeader('Spd', 'avgSpeed', SPEED_COL_WIDTH)}
               </View>
@@ -445,6 +457,23 @@ export default function LeaderboardTable({
                           }}
                         >
                           {didPlay && showStats ? score : '\u2014'}
+                        </Text>
+                      </View>
+
+                      {/* Wins */}
+                      <View style={{ width: COL_WIDTH, alignItems: 'center' }}>
+                        <Text
+                          style={{
+                            fontFamily: 'Urbanist_400Regular',
+                            fontSize: 12,
+                            color: didPlay && showStats ? '#AAAAAA' : '#444444',
+                          }}
+                        >
+                          {showStats
+                            ? isTodayRow
+                              ? (row as typeof todayRows[number]).wins
+                              : ((row as LeaderboardEntry).wins ?? 0)
+                            : '\u2014'}
                         </Text>
                       </View>
 
