@@ -41,12 +41,12 @@ export function getMidnightCountdown(): string {
 }
 
 // Returns the current "game day" date string.
-// The game day flips at 8pm EST — after 8pm EST, this returns tomorrow's date
+// The game day flips at 12pm EST — after noon EST, this returns tomorrow's date
 // because that's when the next day's questions go live.
 export function getTodayDateString(): string {
   const now = new Date();
   const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  if (estNow.getHours() >= 20) {
+  if (estNow.getHours() >= 12) {
     estNow.setDate(estNow.getDate() + 1);
   }
   const y = estNow.getFullYear();
@@ -55,33 +55,33 @@ export function getTodayDateString(): string {
   return `${y}-${m}-${d}`;
 }
 
-// Quiz drops every day at 8pm EST. It stays open until the next 8pm drop.
+// Quiz drops every day at 12pm EST. It stays open until the next 12pm drop.
 // The quiz is always available — if you haven't played, you can play.
 export function isQuizWindowOpen(): boolean {
   return true;
 }
 
 // Scores are always visible after completing the quiz.
-// The next quiz still drops at 8pm EST.
+// The next quiz still drops at 12pm EST.
 export function haveScoresDropped(): boolean {
   return true;
 }
 
-// Countdown to next 8pm EST (next quiz drop / score release)
+// Countdown to next 12pm EST (next quiz drop / score release)
 export function getNextQuizCountdown(): string {
   const now = new Date();
   // Get "now" in EST
   const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
   const estHour = estNow.getHours();
 
-  // Target: today 8pm EST if before 8pm, otherwise tomorrow 8pm EST
+  // Target: today 12pm EST if before noon, otherwise tomorrow 12pm EST
   let targetEST = new Date(estNow);
 
-  if (estHour < 20) {
-    targetEST.setHours(20, 0, 0, 0);
+  if (estHour < 12) {
+    targetEST.setHours(12, 0, 0, 0);
   } else {
     targetEST.setDate(targetEST.getDate() + 1);
-    targetEST.setHours(20, 0, 0, 0);
+    targetEST.setHours(12, 0, 0, 0);
   }
 
   const diff = targetEST.getTime() - estNow.getTime();

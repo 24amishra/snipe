@@ -383,7 +383,7 @@ export default function GameScreen() {
             {results.length} / {TOTAL_QUESTIONS} answered
           </Text>
           <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 13, color: '#888888', marginBottom: 32 }}>
-            questions drop at 8pm EST
+            questions drop at 12pm EST
           </Text>
           <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 40, color: '#FFFFFF', fontVariant: ['tabular-nums'], marginBottom: 48 }}>
             {countdown}

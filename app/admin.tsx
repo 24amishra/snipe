@@ -45,7 +45,7 @@ export default function AdminScreen() {
 
   // Date state — default to next game day (the one after the currently live day)
   const [selectedDate, setSelectedDate] = useState(() => {
-    const currentGameDay = getTodayDateString(); // already accounts for 8pm EST flip
+    const currentGameDay = getTodayDateString(); // already accounts for 12pm EST flip
     const next = new Date(currentGameDay + 'T00:00:00');
     next.setDate(next.getDate() + 1);
     return formatDate(next);
