@@ -40,9 +40,19 @@ export function getMidnightCountdown(): string {
   return `${h}:${m}:${s}`;
 }
 
+// Returns the current "game day" date string.
+// The game day flips at 8pm EST — after 8pm EST, this returns tomorrow's date
+// because that's when the next day's questions go live.
 export function getTodayDateString(): string {
   const now = new Date();
-  return now.toISOString().split('T')[0];
+  const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  if (estNow.getHours() >= 20) {
+    estNow.setDate(estNow.getDate() + 1);
+  }
+  const y = estNow.getFullYear();
+  const m = String(estNow.getMonth() + 1).padStart(2, '0');
+  const d = String(estNow.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 // Quiz drops every day at 8pm EST. It stays open until the next 8pm drop.

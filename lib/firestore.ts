@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { getTodayDateString } from './gameUtils';
+import { normalizeCategory } from './constants';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -152,7 +153,7 @@ export async function saveGameResult(
   // Build category stat increments
   const updatedCategoryStats: Record<string, CategoryStats> = { ...userData.categoryStats };
   for (const q of questions) {
-    const cat = q.category;
+    const cat = normalizeCategory(q.category);
     if (!updatedCategoryStats[cat]) {
       updatedCategoryStats[cat] = { correct: 0, total: 0, totalTime: 0 };
     }
@@ -392,11 +393,12 @@ async function updateLeaderboardEntry(
   // Build per-category stats for this game
   const gameCategoryStats: Record<string, { correct: number; total: number }> = {};
   for (const q of result.questions) {
-    if (!gameCategoryStats[q.category]) {
-      gameCategoryStats[q.category] = { correct: 0, total: 0 };
+    const cat = normalizeCategory(q.category);
+    if (!gameCategoryStats[cat]) {
+      gameCategoryStats[cat] = { correct: 0, total: 0 };
     }
-    gameCategoryStats[q.category].total += 1;
-    if (q.correct) gameCategoryStats[q.category].correct += 1;
+    gameCategoryStats[cat].total += 1;
+    if (q.correct) gameCategoryStats[cat].correct += 1;
   }
 
   if (entrySnap.exists()) {
@@ -489,11 +491,12 @@ export async function getGroupTodayScores(
     const categoryStats: Record<string, { correct: number; total: number }> = {};
     let totalTime = 0;
     for (const q of gameResult.questions) {
-      if (!categoryStats[q.category]) {
-        categoryStats[q.category] = { correct: 0, total: 0 };
+      const cat = normalizeCategory(q.category);
+      if (!categoryStats[cat]) {
+        categoryStats[cat] = { correct: 0, total: 0 };
       }
-      categoryStats[q.category].total += 1;
-      if (q.correct) categoryStats[q.category].correct += 1;
+      categoryStats[cat].total += 1;
+      if (q.correct) categoryStats[cat].correct += 1;
       totalTime += 8 - q.timeRemaining;
     }
 

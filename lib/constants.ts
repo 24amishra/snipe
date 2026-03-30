@@ -21,3 +21,17 @@ export const CATEGORY_ABBR: Record<string, string> = {
   'Current Events': 'CUR',
   Other: 'OTH',
 };
+
+// Lookup map: lowercase → canonical name
+const CATEGORY_LOOKUP: Record<string, Category> = {};
+for (const cat of CATEGORIES) {
+  CATEGORY_LOOKUP[cat.toLowerCase()] = cat;
+}
+
+/**
+ * Normalize a category string to its canonical CATEGORIES form.
+ * Falls back to "Other" if unrecognized.
+ */
+export function normalizeCategory(raw: string): Category {
+  return CATEGORY_LOOKUP[raw.toLowerCase().trim()] ?? 'Other';
+}

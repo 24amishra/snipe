@@ -21,6 +21,7 @@ import {
   type QuizQuestion,
 } from '../lib/firestore';
 import { CATEGORIES } from '../lib/constants';
+import { getTodayDateString } from '../lib/gameUtils';
 
 function formatDate(d: Date): string {
   return d.toISOString().split('T')[0];
@@ -42,11 +43,12 @@ export default function AdminScreen() {
     }
   }, []);
 
-  // Date state — default to tomorrow
+  // Date state — default to next game day (the one after the currently live day)
   const [selectedDate, setSelectedDate] = useState(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return formatDate(tomorrow);
+    const currentGameDay = getTodayDateString(); // already accounts for 8pm EST flip
+    const next = new Date(currentGameDay + 'T00:00:00');
+    next.setDate(next.getDate() + 1);
+    return formatDate(next);
   });
 
   // Data

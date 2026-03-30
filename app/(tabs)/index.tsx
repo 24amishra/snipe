@@ -204,7 +204,7 @@ export default function TodayTab() {
         ) : (
           <View style={{ alignItems: 'center' }}>
             <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#888888', marginBottom: 8 }}>
-              scores drop & next quiz in
+               next quiz  in
             </Text>
             <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 48, color: '#FFFFFF', fontVariant: ['tabular-nums'] }}>
               {countdown}
@@ -387,7 +387,7 @@ export default function TodayTab() {
               About Snipe
             </Text>
             <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 15, color: '#CCCCCC', lineHeight: 24 }}>
-              Snipe is a speed-based trivia game designed to be played with your group chat. Seven questions, eight seconds each. One daily champion. Track your accuracy and speed across five categories — scores drop every day at 8PM EST.
+              Snipe is a speed-based trivia game designed to be played with your group chat. Seven questions, eight seconds each. One daily champion. Track your accuracy and speed across five categories — questions drop every day at 8PM EST.
             </Text>
             <Pressable
               onPress={() => setShowAbout(false)}
