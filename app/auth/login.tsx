@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import SnipeWordmark from '../../components/SnipeWordmark';
 import { useGoogleAuth } from '../../lib/googleAuth';
 
@@ -13,16 +14,26 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { request: googleRequest, signInWithGoogle } = useGoogleAuth();
 
+  const redirectAfterAuth = async () => {
+    const pending = await AsyncStorage.getItem('snipe_pending_invite');
+    if (pending) {
+      await AsyncStorage.removeItem('snipe_pending_invite');
+      const { groupId, code } = JSON.parse(pending);
+      router.replace(`/join?groupId=${groupId}&code=${code}`);
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
+
   const handleLogin = async () => {
     setError('');
     setLoading(true);
 
     try {
-      // TODO: Replace mock with Firebase Auth
       const { signInWithEmailAndPassword } = await import('firebase/auth');
       const { auth } = await import('../../lib/firebase');
       await signInWithEmailAndPassword(auth, email, password);
-      router.replace('/(tabs)');
+      await redirectAfterAuth();
     } catch (e: any) {
       console.log('[SNIPE] Login error:', e?.code, e?.message);
       if (e?.code === 'auth/user-not-found' || e?.code === 'auth/invalid-credential') {
@@ -133,7 +144,7 @@ export default function Login() {
               try {
                 const result = await signInWithGoogle();
                 if (result) {
-                  router.replace('/(tabs)');
+                  await redirectAfterAuth();
                 }
               } catch (e: any) {
                 console.log('[SNIPE] Google sign-in error:', e?.message);

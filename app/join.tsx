@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../lib/firebase';
 import { joinGroup } from '../lib/firestore';
 import { getGroupDoc } from '../lib/groupUtils';
@@ -23,7 +24,8 @@ export default function JoinScreen() {
 
       const uid = auth.currentUser?.uid;
       if (!uid) {
-        // Not logged in — redirect to login, then they can re-open the link
+        // Not logged in — save pending invite and redirect to login
+        await AsyncStorage.setItem('snipe_pending_invite', JSON.stringify({ groupId, code }));
         router.replace('/auth/login');
         return;
       }

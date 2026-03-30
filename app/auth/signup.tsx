@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import SnipeWordmark from '../../components/SnipeWordmark';
 import { useGoogleAuth } from '../../lib/googleAuth';
 import { createUserProfile, getUserProfile } from '../../lib/firestore';
@@ -14,6 +15,17 @@ export default function Signup() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { request: googleRequest, signInWithGoogle } = useGoogleAuth();
+
+  const redirectAfterAuth = async () => {
+    const pending = await AsyncStorage.getItem('snipe_pending_invite');
+    if (pending) {
+      await AsyncStorage.removeItem('snipe_pending_invite');
+      const { groupId, code } = JSON.parse(pending);
+      router.replace(`/join?groupId=${groupId}&code=${code}`);
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
 
   const handleSignup = async () => {
     setError('');
@@ -45,7 +57,7 @@ export default function Signup() {
 
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await createUserProfile(cred.user.uid, username.trim(), email);
-      router.replace('/(tabs)');
+      await redirectAfterAuth();
     } catch (e: any) {
       console.log('[SNIPE] Signup error:', e?.message);
       if (e?.code === 'auth/email-already-in-use') {
@@ -53,8 +65,8 @@ export default function Signup() {
       } else if (e?.code === 'auth/weak-password') {
         setError('Password must be at least 6 characters');
       } else {
-        // Mock auth fallback — navigate to tabs directly
-        router.replace('/(tabs)');
+        // Mock auth fallback
+        await redirectAfterAuth();
       }
     } finally {
       setLoading(false);
@@ -193,7 +205,7 @@ export default function Signup() {
                     const autoUsername = (result.displayName || result.email.split('@')[0]).slice(0, 12);
                     await createUserProfile(result.uid, autoUsername, result.email);
                   }
-                  router.replace('/(tabs)');
+                  await redirectAfterAuth();
                 }
               } catch (e: any) {
                 console.log('[SNIPE] Google sign-up error:', e?.message);

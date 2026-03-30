@@ -153,10 +153,18 @@ export default function LeaderboardTab() {
     setTimeout(() => setInviteGroup(null), 200);
   };
 
+  const sharingRef = useRef(false);
   const handleShareInvite = async () => {
-    if (!inviteGroup) return;
-    const link = buildInviteLink(inviteGroup.id, inviteGroup.inviteCode);
-    await Share.share({ message: `Join my trivia group on Snipe\n${link}` });
+    if (!inviteGroup || sharingRef.current) return;
+    sharingRef.current = true;
+    try {
+      const link = buildInviteLink(inviteGroup.id, inviteGroup.inviteCode);
+      await Share.share({ message: `Join my trivia group on Snipe\n${link}` });
+    } catch (e) {
+      // user dismissed or share failed
+    } finally {
+      sharingRef.current = false;
+    }
   };
 
   const handleCopyLink = async () => {
