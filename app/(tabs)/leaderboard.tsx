@@ -5,6 +5,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming, Easing } from '
 import { useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
+import { Info } from 'lucide-react-native';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import LeaderboardTable from '../../components/LeaderboardTable';
 import { getUserGroups, getGroupLeaderboard, joinGroup } from '../../lib/firestore';
@@ -50,6 +51,7 @@ export default function LeaderboardTab() {
 
   const currentUserId = auth.currentUser?.uid ?? '';
   const [scoresReleased, setScoresReleased] = useState(haveScoresDropped());
+  const [showAbout, setShowAbout] = useState(false);
 
   // Poll score release status every second
   useEffect(() => {
@@ -159,7 +161,7 @@ export default function LeaderboardTab() {
     sharingRef.current = true;
     try {
       const link = buildInviteLink(inviteGroup.id, inviteGroup.inviteCode);
-      await Share.share({ message: `Join my trivia group on Snipe\n${link}` });
+      await Share.share({ message: `Join my trivia group on Snipe — a speed-based trivia game designed to be played with your group chat. Seven questions, eight seconds each. One daily champion. Scores drop every day at 8PM EST.\n\n${link}` });
     } catch (e) {
       // user dismissed or share failed
     } finally {
@@ -309,16 +311,20 @@ export default function LeaderboardTab() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#000000' }}>
       <Animated.ScrollView ref={scrollRef as any} style={[{ paddingHorizontal: 20, paddingTop: 16 }, fadeStyle]}>
-        <Text
-          style={{
-            fontFamily: 'Urbanist_700Bold',
-            fontSize: 28,
-            color: '#FFFFFF',
-            marginBottom: 32,
-          }}
-        >
-          Leaderboard
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+          <Text
+            style={{
+              fontFamily: 'Urbanist_700Bold',
+              fontSize: 28,
+              color: '#FFFFFF',
+            }}
+          >
+            Leaderboard
+          </Text>
+          <Pressable onPress={() => setShowAbout(true)}>
+            <Info color="#888888" size={22} />
+          </Pressable>
+        </View>
 
         {groups.length === 0 ? (
           <View style={{ alignItems: 'center', paddingTop: 60 }}>
@@ -563,6 +569,26 @@ export default function LeaderboardTab() {
                 Joined group successfully!
               </Text>
             )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* About Modal */}
+      <Modal visible={showAbout} transparent animationType="fade">
+        <Pressable onPress={() => setShowAbout(false)} style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.85)', paddingHorizontal: 24 }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: '#111111', borderRadius: 20, padding: 28, width: '100%', borderWidth: 1, borderColor: '#1A1A1A' }}>
+            <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 22, color: '#FFFFFF', marginBottom: 16 }}>
+              About Snipe
+            </Text>
+            <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 15, color: '#CCCCCC', lineHeight: 24 }}>
+              Snipe is a speed-based trivia game designed to be played with your group chat. Seven questions, eight seconds each. One daily champion. Track your accuracy and speed across five categories — scores drop every day at 8PM EST.
+            </Text>
+            <Pressable
+              onPress={() => setShowAbout(false)}
+              style={{ backgroundColor: '#FFFFFF', borderRadius: 16, paddingVertical: 14, alignItems: 'center', marginTop: 24 }}
+            >
+              <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 16, color: '#000000' }}>Got it</Text>
+            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>

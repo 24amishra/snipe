@@ -3,7 +3,7 @@ import { View, Text, Pressable, ScrollView, Modal, TextInput } from 'react-nativ
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { Plus, Users } from 'lucide-react-native';
+import { Plus, Users, Info } from 'lucide-react-native';
 import SnipeWordmark from '../../components/SnipeWordmark';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import { getMidnightCountdown, getTodayDateString, isQuizWindowOpen, getNextQuizCountdown } from '../../lib/gameUtils';
@@ -18,6 +18,7 @@ export default function TodayTab() {
   const [quizOpen, setQuizOpen] = useState(isQuizWindowOpen());
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const [modalInput, setModalInput] = useState('');
   const [modalLoading, setModalLoading] = useState(false);
   const [modalSuccess, setModalSuccess] = useState(false);
@@ -163,6 +164,9 @@ export default function TodayTab() {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 40 }}>
           <SnipeWordmark size="md" />
           <View style={{ flexDirection: 'row', gap: 16 }}>
+            <Pressable onPress={() => setShowAbout(true)}>
+              <Info color="#888888" size={22} />
+            </Pressable>
             <Pressable onPress={() => { setShowCreateModal(true); setModalSuccess(false); }}>
               <Plus color="#FFFFFF" size={24} />
             </Pressable>
@@ -371,6 +375,26 @@ export default function TodayTab() {
                 Joined group successfully!
               </Text>
             )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* About Modal */}
+      <Modal visible={showAbout} transparent animationType="fade">
+        <Pressable onPress={() => setShowAbout(false)} style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.85)', paddingHorizontal: 24 }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: '#111111', borderRadius: 20, padding: 28, width: '100%', borderWidth: 1, borderColor: '#1A1A1A' }}>
+            <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 22, color: '#FFFFFF', marginBottom: 16 }}>
+              About Snipe
+            </Text>
+            <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 15, color: '#CCCCCC', lineHeight: 24 }}>
+              Snipe is a speed-based trivia game designed to be played with your group chat. Seven questions, eight seconds each. One daily champion. Track your accuracy and speed across five categories — scores drop every day at 8PM EST.
+            </Text>
+            <Pressable
+              onPress={() => setShowAbout(false)}
+              style={{ backgroundColor: '#FFFFFF', borderRadius: 16, paddingVertical: 14, alignItems: 'center', marginTop: 24 }}
+            >
+              <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 16, color: '#000000' }}>Got it</Text>
+            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
