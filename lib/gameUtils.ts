@@ -51,11 +51,10 @@ export function isQuizWindowOpen(): boolean {
   return true;
 }
 
-// Returns true if scores have been released (past 8pm EST today)
+// Scores are always visible after completing the quiz.
+// The next quiz still drops at 8pm EST.
 export function haveScoresDropped(): boolean {
-  const now = new Date();
-  const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  return estNow.getHours() >= 20;
+  return true;
 }
 
 // Countdown to next 8pm EST (next quiz drop / score release)
