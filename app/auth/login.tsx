@@ -137,44 +137,7 @@ export default function Login() {
             <View style={{ flex: 1, height: 1, backgroundColor: '#222222' }} />
           </View>
 
-          <Pressable
-            onPress={async () => {
-              setError('');
-              setLoading(true);
-              try {
-                const result = await signInWithGoogle();
-                if (result) {
-                  await redirectAfterAuth();
-                }
-              } catch (e: any) {
-                console.log('[SNIPE] Google sign-in error:', e?.message);
-                setError('Google sign-in failed');
-              } finally {
-                setLoading(false);
-              }
-            }}
-            disabled={loading || !googleRequest}
-            style={{
-              backgroundColor: '#000000',
-              borderRadius: 20,
-              paddingVertical: 18,
-              alignItems: 'center',
-              borderWidth: 1,
-              borderColor: '#333333',
-              marginTop: 12,
-              opacity: loading || !googleRequest ? 0.5 : 1,
-            }}
-          >
-            <Text
-              style={{
-                fontFamily: 'Urbanist_700Bold',
-                fontSize: 18,
-                color: '#FFFFFF',
-              }}
-            >
-              Continue with Google
-            </Text>
-          </Pressable>
+         
 
           <Pressable onPress={() => router.push('/auth/signup')} style={{ alignItems: 'center', marginTop: 16 }}>
             <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#888888' }}>
