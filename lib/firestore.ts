@@ -74,7 +74,17 @@ export interface LeaderboardEntry {
   currentStreak: number;
   gamesPlayed: number;
   avgPct: number;
+  avgSpeed: number;
+  categoryStats: Record<string, { correct: number; total: number }>;
   lastUpdated: Timestamp;
+}
+
+export interface TodayEntry {
+  userId: string;
+  username: string;
+  score: number;
+  avgSpeed: number;
+  categoryStats: Record<string, { correct: number; total: number }>;
 }
 
 // ─── Users ───────────────────────────────────────────────────────────
@@ -279,6 +289,8 @@ export async function createGroup(
     currentStreak: 0,
     gamesPlayed: 0,
     avgPct: 0,
+    avgSpeed: 0,
+    categoryStats: {},
     lastUpdated: serverTimestamp(),
   });
 
@@ -325,6 +337,8 @@ export async function joinGroup(
     currentStreak: 0,
     gamesPlayed: 0,
     avgPct: 0,
+    avgSpeed: 0,
+    categoryStats: {},
     lastUpdated: serverTimestamp(),
   });
 
@@ -369,6 +383,22 @@ async function updateLeaderboardEntry(
   const correctCount = result.questions.filter((q) => q.correct).length;
   const totalQuestions = result.questions.length;
 
+  // Compute avg speed for this game (seconds spent per question)
+  const gameAvgSpeed =
+    totalQuestions > 0
+      ? result.questions.reduce((sum, q) => sum + (8 - q.timeRemaining), 0) / totalQuestions
+      : 0;
+
+  // Build per-category stats for this game
+  const gameCategoryStats: Record<string, { correct: number; total: number }> = {};
+  for (const q of result.questions) {
+    if (!gameCategoryStats[q.category]) {
+      gameCategoryStats[q.category] = { correct: 0, total: 0 };
+    }
+    gameCategoryStats[q.category].total += 1;
+    if (q.correct) gameCategoryStats[q.category].correct += 1;
+  }
+
   if (entrySnap.exists()) {
     const existing = entrySnap.data() as LeaderboardEntry;
     const newTotalScore = existing.totalScore + result.score;
@@ -377,11 +407,33 @@ async function updateLeaderboardEntry(
     const newTotalQuestions = existing.gamesPlayed * 7 + totalQuestions;
     const newAvgPct = newTotalQuestions > 0 ? Math.round((newTotalCorrect / newTotalQuestions) * 100) : 0;
 
+    // Weighted running average for speed
+    const oldTotalQs = existing.gamesPlayed * 7;
+    const newAvgSpeed =
+      oldTotalQs + totalQuestions > 0
+        ? ((existing.avgSpeed ?? 0) * oldTotalQs + gameAvgSpeed * totalQuestions) /
+          (oldTotalQs + totalQuestions)
+        : 0;
+
+    // Merge category stats
+    const mergedCategoryStats: Record<string, { correct: number; total: number }> = {
+      ...(existing.categoryStats ?? {}),
+    };
+    for (const [cat, stats] of Object.entries(gameCategoryStats)) {
+      if (!mergedCategoryStats[cat]) {
+        mergedCategoryStats[cat] = { correct: 0, total: 0 };
+      }
+      mergedCategoryStats[cat].correct += stats.correct;
+      mergedCategoryStats[cat].total += stats.total;
+    }
+
     await updateDoc(entryRef, {
       totalScore: newTotalScore,
       currentStreak: result.newStreak,
       gamesPlayed: result.newGamesPlayed,
       avgPct: newAvgPct,
+      avgSpeed: Math.round(newAvgSpeed * 10) / 10,
+      categoryStats: mergedCategoryStats,
       lastUpdated: serverTimestamp(),
     });
   } else {
@@ -394,7 +446,72 @@ async function updateLeaderboardEntry(
       currentStreak: result.newStreak,
       gamesPlayed: 1,
       avgPct,
+      avgSpeed: Math.round(gameAvgSpeed * 10) / 10,
+      categoryStats: gameCategoryStats,
       lastUpdated: serverTimestamp(),
     });
   }
+}
+
+// ─── Today's Scores ─────────────────────────────────────────────────
+
+export async function getGroupTodayScores(
+  groupId: string,
+  date: string,
+): Promise<TodayEntry[]> {
+  // Get all members of the group
+  const groupSnap = await getDoc(doc(db, 'groups', groupId));
+  if (!groupSnap.exists()) return [];
+  const groupData = groupSnap.data() as GroupDoc;
+
+  // Fetch today's game results for all members
+  const todayEntries: TodayEntry[] = [];
+
+  for (const memberId of groupData.memberIds) {
+    const resultQuery = query(
+      collection(db, 'gameResults'),
+      where('userId', '==', memberId),
+      where('date', '==', date),
+    );
+    const resultSnap = await getDocs(resultQuery);
+
+    if (resultSnap.empty) continue;
+
+    const gameResult = resultSnap.docs[0].data() as GameResult;
+
+    // Get username from leaderboard entry
+    const lbSnap = await getDoc(doc(db, 'groups', groupId, 'leaderboard', memberId));
+    const username = lbSnap.exists()
+      ? (lbSnap.data() as LeaderboardEntry).username
+      : 'unknown';
+
+    // Build per-category stats for today
+    const categoryStats: Record<string, { correct: number; total: number }> = {};
+    let totalTime = 0;
+    for (const q of gameResult.questions) {
+      if (!categoryStats[q.category]) {
+        categoryStats[q.category] = { correct: 0, total: 0 };
+      }
+      categoryStats[q.category].total += 1;
+      if (q.correct) categoryStats[q.category].correct += 1;
+      totalTime += 8 - q.timeRemaining;
+    }
+
+    const avgSpeed =
+      gameResult.questions.length > 0
+        ? Math.round((totalTime / gameResult.questions.length) * 10) / 10
+        : 0;
+
+    todayEntries.push({
+      userId: memberId,
+      username,
+      score: gameResult.score,
+      avgSpeed,
+      categoryStats,
+    });
+  }
+
+  // Sort by score descending
+  todayEntries.sort((a, b) => b.score - a.score);
+  return todayEntries;
 }

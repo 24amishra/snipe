@@ -198,10 +198,8 @@ export default function Signup() {
               try {
                 const result = await signInWithGoogle();
                 if (result) {
-                  // Check if user profile already exists (returning Google user)
                   const existing = await getUserProfile(result.uid);
                   if (!existing) {
-                    // New Google user — create profile using display name or email prefix
                     const autoUsername = (result.displayName || result.email.split('@')[0]).slice(0, 12);
                     await createUserProfile(result.uid, autoUsername, result.email);
                   }

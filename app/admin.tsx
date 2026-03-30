@@ -20,6 +20,7 @@ import {
   getTodayQuestions,
   type QuizQuestion,
 } from '../lib/firestore';
+import { CATEGORIES } from '../lib/constants';
 
 function formatDate(d: Date): string {
   return d.toISOString().split('T')[0];
@@ -30,8 +31,6 @@ function friendlyDate(dateStr: string): string {
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return `${months[parseInt(m, 10) - 1]} ${parseInt(d, 10)}, ${y}`;
 }
-
-const CATEGORIES = ['Sports', 'History', 'Science', 'Entertainment', 'Music', 'Current Events', 'Other'] as const;
 
 export default function AdminScreen() {
   const router = useRouter();

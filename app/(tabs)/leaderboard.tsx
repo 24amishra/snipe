@@ -8,17 +8,25 @@ import * as Clipboard from 'expo-clipboard';
 import { Info } from 'lucide-react-native';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import LeaderboardTable from '../../components/LeaderboardTable';
-import { getUserGroups, getGroupLeaderboard, joinGroup } from '../../lib/firestore';
+import {
+  getUserGroups,
+  getGroupLeaderboard,
+  getGroupTodayScores,
+  joinGroup,
+  type LeaderboardEntry,
+  type TodayEntry,
+} from '../../lib/firestore';
 import { auth } from '../../lib/firebase';
 import { getGroupDoc, buildInviteLink, removeMember } from '../../lib/groupUtils';
-import { haveScoresDropped } from '../../lib/gameUtils';
+import { haveScoresDropped, getTodayDateString } from '../../lib/gameUtils';
 
 interface GroupWithLeaderboard {
   id: string;
   name: string;
   ownerId: string;
   inviteCode: string;
-  entries: Array<{ userId: string; username: string; score: number; wins: number; streak: number; avgPct: number }>;
+  entries: LeaderboardEntry[];
+  todayEntries: TodayEntry[];
 }
 
 export default function LeaderboardTab() {
@@ -78,11 +86,13 @@ export default function LeaderboardTab() {
           const uid = auth.currentUser?.uid;
           if (uid) {
             const userGroups = await getUserGroups(uid);
+            const today = getTodayDateString();
             const groupsWithLb: GroupWithLeaderboard[] = await Promise.all(
               userGroups.map(async (g) => {
-                const [lb, groupDoc] = await Promise.all([
+                const [lb, groupDoc, todayScores] = await Promise.all([
                   getGroupLeaderboard(g.id),
                   getGroupDoc(g.id),
+                  getGroupTodayScores(g.id, today),
                 ]);
                 return {
                   id: g.id,
@@ -90,13 +100,11 @@ export default function LeaderboardTab() {
                   ownerId: groupDoc?.createdBy ?? '',
                   inviteCode: groupDoc?.inviteCode ?? '',
                   entries: lb.map((e) => ({
-                    userId: e.userId,
-                    username: e.username,
-                    score: e.totalScore,
-                    wins: e.wins,
-                    streak: e.currentStreak,
-                    avgPct: e.avgPct,
+                    ...e,
+                    avgSpeed: e.avgSpeed ?? 0,
+                    categoryStats: e.categoryStats ?? {},
                   })),
+                  todayEntries: todayScores,
                 };
               }),
             );
@@ -244,12 +252,14 @@ export default function LeaderboardTab() {
       }
       setJoinSuccess(true);
       // Reload leaderboard data
+      const todayDate = getTodayDateString();
       const userGroups = await getUserGroups(uid);
       const groupsWithLb: GroupWithLeaderboard[] = await Promise.all(
         userGroups.map(async (g) => {
-          const [lb, groupDoc] = await Promise.all([
+          const [lb, groupDoc, todayScores] = await Promise.all([
             getGroupLeaderboard(g.id),
             getGroupDoc(g.id),
+            getGroupTodayScores(g.id, todayDate),
           ]);
           return {
             id: g.id,
@@ -257,13 +267,11 @@ export default function LeaderboardTab() {
             ownerId: groupDoc?.createdBy ?? '',
             inviteCode: groupDoc?.inviteCode ?? '',
             entries: lb.map((e) => ({
-              userId: e.userId,
-              username: e.username,
-              score: e.totalScore,
-              wins: e.wins,
-              streak: e.currentStreak,
-              avgPct: e.avgPct,
+              ...e,
+              avgSpeed: e.avgSpeed ?? 0,
+              categoryStats: e.categoryStats ?? {},
             })),
+            todayEntries: todayScores,
           };
         }),
       );
@@ -357,6 +365,7 @@ export default function LeaderboardTab() {
                 <LeaderboardTable
                   groupName={group.name}
                   entries={group.entries}
+                  todayEntries={group.todayEntries}
                   isOwner={isOwner}
                   currentUserId={currentUserId}
                   scoresReleased={scoresReleased}
