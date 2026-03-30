@@ -15,14 +15,19 @@ interface LeaderboardTableProps {
   onRemoveMember?: (userId: string, username: string) => void;
 }
 
-type SortColumn = 'score' | 'avgSpeed' | string; // string for category names
+type SortColumn = 'score' | 'avgSpeed' | string;
 type SortDir = 'desc' | 'asc';
 
-// Column definitions for the scrollable area
 const CATEGORY_COLS = CATEGORIES.map((cat) => ({
   key: cat as string,
   label: CATEGORY_ABBR[cat],
 }));
+
+const ROW_HEIGHT = 40;
+const HEADER_HEIGHT = 32;
+const RED_LINE_HEIGHT = 16;
+const COL_WIDTH = 52;
+const SPEED_COL_WIDTH = 56;
 
 function getCategoryPct(
   categoryStats: Record<string, { correct: number; total: number }> | undefined,
@@ -60,13 +65,11 @@ export default function LeaderboardTable({
     }
   };
 
-  // Build unified rows for "Today" view
   const todayRows = useMemo(() => {
     if (activeView !== 'today') return [];
 
     const playedUserIds = new Set((todayEntries ?? []).map((e) => e.userId));
 
-    // Players who played today
     const played = (todayEntries ?? []).map((e) => ({
       userId: e.userId,
       username: e.username,
@@ -76,7 +79,6 @@ export default function LeaderboardTable({
       didPlay: true,
     }));
 
-    // Players who didn't play
     const notPlayed = entries
       .filter((e) => !playedUserIds.has(e.userId))
       .map((e) => ({
@@ -88,7 +90,6 @@ export default function LeaderboardTable({
         didPlay: false,
       }));
 
-    // Sort played entries
     const sortedPlayed = [...played].sort((a, b) => {
       let aVal: number, bVal: number;
       if (sortCol === 'score') {
@@ -98,7 +99,6 @@ export default function LeaderboardTable({
         aVal = a.avgSpeed;
         bVal = b.avgSpeed;
       } else {
-        // Category column — sort by accuracy %
         const aCat = a.categoryStats[sortCol];
         const bCat = b.categoryStats[sortCol];
         aVal = aCat && aCat.total > 0 ? aCat.correct / aCat.total : -1;
@@ -110,7 +110,6 @@ export default function LeaderboardTable({
     return [...sortedPlayed, ...notPlayed];
   }, [activeView, todayEntries, entries, sortCol, sortDir]);
 
-  // Build sorted rows for "All Time" view
   const allTimeRows = useMemo(() => {
     if (activeView !== 'allTime') return [];
 
@@ -123,7 +122,6 @@ export default function LeaderboardTable({
         aVal = a.avgSpeed ?? 0;
         bVal = b.avgSpeed ?? 0;
       } else {
-        // Category column
         const aCat = a.categoryStats?.[sortCol];
         const bCat = b.categoryStats?.[sortCol];
         aVal = aCat && aCat.total > 0 ? aCat.correct / aCat.total : -1;
@@ -133,7 +131,6 @@ export default function LeaderboardTable({
     });
   }, [activeView, entries, sortCol, sortDir]);
 
-  // Compute average score for the red line
   const avgScore = useMemo(() => {
     if (activeView === 'today') {
       const played = todayRows.filter((r) => r.didPlay);
@@ -147,32 +144,29 @@ export default function LeaderboardTable({
 
   const rows = activeView === 'today' ? todayRows : allTimeRows;
 
-  // Find where the red line should go (between rows that straddle the average)
   const redLineIndex = useMemo(() => {
     if (rows.length === 0) return -1;
-    // Only consider "played" rows for today view
     const scores = rows.map((r) => {
       if (activeView === 'today') {
         return (r as typeof todayRows[number]).didPlay ? (r as typeof todayRows[number]).score : -1;
       }
       return (r as LeaderboardEntry).totalScore;
     });
-
-    // Find the first index where score drops below average
     for (let i = 0; i < scores.length; i++) {
       if (scores[i] < avgScore) return i;
     }
-    return -1; // everyone is above average
+    return -1;
   }, [rows, avgScore, activeView]);
-
-  const COL_WIDTH = 52;
-  const SPEED_COL_WIDTH = 56;
 
   const renderSortHeader = (label: string, col: SortColumn, width: number) => {
     const isActive = sortCol === col;
     const arrow = isActive ? (sortDir === 'desc' ? '\u25BC' : '\u25B2') : '';
     return (
-      <Pressable key={col} onPress={() => handleSort(col)} style={{ width, alignItems: 'center' }}>
+      <Pressable
+        key={col}
+        onPress={() => handleSort(col)}
+        style={{ width, height: HEADER_HEIGHT, justifyContent: 'center', alignItems: 'center' }}
+      >
         <Text
           style={{
             fontFamily: 'Urbanist_700Bold',
@@ -265,147 +259,200 @@ export default function LeaderboardTable({
         </Pressable>
       </View>
 
-      <View style={{ height: 1, backgroundColor: '#1A1A1A', marginBottom: 4 }} />
-
       {/* Table */}
-      <View style={{ flexDirection: 'row' }}>
-        {/* Fixed left column: Rank + Username */}
-        <View style={{ width: 130 }}>
-          {/* Header */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 4 }}>
-            <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 11, color: '#888888', width: 30 }}>
-              #
-            </Text>
-            <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 11, color: '#888888' }}>
-              Player
-            </Text>
-          </View>
-          {/* Rows */}
-          {rows.map((row, index) => {
-            const isMe = row.userId === currentUserId;
-            const isTodayRow = activeView === 'today';
-            const didPlay = isTodayRow ? (row as typeof todayRows[number]).didPlay : true;
-            const showRedLine = index === redLineIndex;
-
-            return (
-              <View key={row.userId}>
-                {showRedLine && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 2 }}>
-                    <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 9, color: '#EF4444', marginRight: 4 }}>
-                      avg
-                    </Text>
-                    <View style={{ flex: 1, height: 1, backgroundColor: '#EF4444' }} />
-                  </View>
-                )}
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingVertical: 10,
-                    paddingHorizontal: 4,
-                    backgroundColor: index % 2 === 0 ? '#000000' : '#080808',
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontFamily: 'Urbanist_400Regular',
-                      fontSize: 13,
-                      color: didPlay ? '#888888' : '#444444',
-                      width: 30,
-                    }}
-                  >
-                    {scoresReleased && didPlay
-                      ? index === 0
-                        ? '\u{1F451}'
-                        : `${index + 1}`
-                      : '#?'}
-                  </Text>
-                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-                    <Text
-                      style={{
-                        fontFamily: 'Urbanist_700Bold',
-                        fontSize: 14,
-                        color: didPlay ? '#FFFFFF' : '#444444',
-                        flex: 1,
-                      }}
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                    >
-                      {row.username}
-                    </Text>
-                    {isOwner && !isMe && onRemoveMember && (
-                      <Pressable
-                        onPress={() => onRemoveMember(row.userId, row.username)}
-                        hitSlop={8}
-                        style={{ marginLeft: 4 }}
-                      >
-                        <X color="#888888" size={14} />
-                      </Pressable>
-                    )}
-                  </View>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* Scrollable right columns */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-          <View>
-            {/* Header row */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
-              {renderSortHeader('Score', 'score', COL_WIDTH)}
-              {CATEGORY_COLS.map((col) => renderSortHeader(col.label, col.key, COL_WIDTH))}
-              {renderSortHeader('Spd', 'avgSpeed', SPEED_COL_WIDTH)}
+      <View
+        style={{
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: '#1A1A1A',
+          overflow: 'hidden',
+        }}
+      >
+        <View style={{ flexDirection: 'row' }}>
+          {/* Fixed left column: Rank + Username */}
+          <View style={{ width: 130 }}>
+            {/* Header */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                height: HEADER_HEIGHT,
+                paddingHorizontal: 8,
+                borderBottomWidth: 1,
+                borderBottomColor: '#222222',
+                backgroundColor: '#0A0A0A',
+              }}
+            >
+              <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 11, color: '#888888', width: 26 }}>
+                #
+              </Text>
+              <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 11, color: '#888888' }}>
+                Player
+              </Text>
             </View>
-
-            {/* Data rows */}
+            {/* Rows */}
             {rows.map((row, index) => {
+              const isMe = row.userId === currentUserId;
               const isTodayRow = activeView === 'today';
               const didPlay = isTodayRow ? (row as typeof todayRows[number]).didPlay : true;
-              const isMe = row.userId === currentUserId;
-              const showStats = scoresReleased || isMe;
               const showRedLine = index === redLineIndex;
-
-              const score = isTodayRow
-                ? (row as typeof todayRows[number]).score
-                : (row as LeaderboardEntry).totalScore;
-              const avgSpeed = isTodayRow
-                ? (row as typeof todayRows[number]).avgSpeed
-                : ((row as LeaderboardEntry).avgSpeed ?? 0);
-              const catStats = isTodayRow
-                ? (row as typeof todayRows[number]).categoryStats
-                : (row as LeaderboardEntry).categoryStats;
 
               return (
                 <View key={row.userId}>
                   {showRedLine && (
-                    <View style={{ height: 5 }} />
+                    <View
+                      style={{
+                        height: RED_LINE_HEIGHT,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingHorizontal: 8,
+                        backgroundColor: '#0A0000',
+                      }}
+                    >
+                      <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 9, color: '#EF4444', marginRight: 4 }}>
+                        AVG
+                      </Text>
+                      <View style={{ flex: 1, height: 1, backgroundColor: '#EF4444' }} />
+                    </View>
                   )}
                   <View
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      paddingVertical: 10,
-                      backgroundColor: index % 2 === 0 ? '#000000' : '#080808',
+                      height: ROW_HEIGHT,
+                      paddingHorizontal: 8,
+                      backgroundColor: isMe ? '#111118' : index % 2 === 0 ? '#000000' : '#060606',
+                      borderBottomWidth: 1,
+                      borderBottomColor: '#141414',
                     }}
                   >
-                    {/* Score */}
-                    <View style={{ width: COL_WIDTH, alignItems: 'center' }}>
+                    <Text
+                      style={{
+                        fontFamily: 'Urbanist_400Regular',
+                        fontSize: 13,
+                        color: didPlay ? '#888888' : '#444444',
+                        width: 26,
+                      }}
+                    >
+                      {scoresReleased && didPlay
+                        ? index === 0
+                          ? '\u{1F451}'
+                          : `${index + 1}`
+                        : '#?'}
+                    </Text>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
                       <Text
                         style={{
-                          fontFamily: 'Urbanist_700Bold',
-                          fontSize: 13,
-                          color: didPlay && showStats ? '#FFFFFF' : '#444444',
+                          fontFamily: isMe ? 'Urbanist_700Bold' : 'Urbanist_700Bold',
+                          fontSize: 14,
+                          color: didPlay ? (isMe ? '#FFFFFF' : '#CCCCCC') : '#444444',
+                          flex: 1,
                         }}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
                       >
-                        {didPlay && showStats ? score : '\u2014'}
+                        {row.username}
                       </Text>
+                      {isOwner && !isMe && onRemoveMember && (
+                        <Pressable
+                          onPress={() => onRemoveMember(row.userId, row.username)}
+                          hitSlop={8}
+                          style={{ marginLeft: 4 }}
+                        >
+                          <X color="#888888" size={14} />
+                        </Pressable>
+                      )}
                     </View>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
 
-                    {/* Category columns */}
-                    {CATEGORY_COLS.map((col) => (
-                      <View key={col.key} style={{ width: COL_WIDTH, alignItems: 'center' }}>
+          {/* Scrollable right columns */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+            <View>
+              {/* Header row */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  height: HEADER_HEIGHT,
+                  borderBottomWidth: 1,
+                  borderBottomColor: '#222222',
+                  backgroundColor: '#0A0A0A',
+                }}
+              >
+                {renderSortHeader('Score', 'score', COL_WIDTH)}
+                {CATEGORY_COLS.map((col) => renderSortHeader(col.label, col.key, COL_WIDTH))}
+                {renderSortHeader('Spd', 'avgSpeed', SPEED_COL_WIDTH)}
+              </View>
+
+              {/* Data rows */}
+              {rows.map((row, index) => {
+                const isTodayRow = activeView === 'today';
+                const didPlay = isTodayRow ? (row as typeof todayRows[number]).didPlay : true;
+                const isMe = row.userId === currentUserId;
+                const showStats = scoresReleased || isMe;
+                const showRedLine = index === redLineIndex;
+
+                const score = isTodayRow
+                  ? (row as typeof todayRows[number]).score
+                  : (row as LeaderboardEntry).totalScore;
+                const avgSpeed = isTodayRow
+                  ? (row as typeof todayRows[number]).avgSpeed
+                  : ((row as LeaderboardEntry).avgSpeed ?? 0);
+                const catStats = isTodayRow
+                  ? (row as typeof todayRows[number]).categoryStats
+                  : (row as LeaderboardEntry).categoryStats;
+
+                return (
+                  <View key={row.userId}>
+                    {showRedLine && (
+                      <View style={{ height: RED_LINE_HEIGHT, justifyContent: 'center', backgroundColor: '#0A0000' }}>
+                        <View style={{ height: 1, backgroundColor: '#EF4444' }} />
+                      </View>
+                    )}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        height: ROW_HEIGHT,
+                        backgroundColor: isMe ? '#111118' : index % 2 === 0 ? '#000000' : '#060606',
+                        borderBottomWidth: 1,
+                        borderBottomColor: '#141414',
+                      }}
+                    >
+                      {/* Score */}
+                      <View style={{ width: COL_WIDTH, alignItems: 'center' }}>
+                        <Text
+                          style={{
+                            fontFamily: 'Urbanist_700Bold',
+                            fontSize: 13,
+                            color: didPlay && showStats ? '#FFFFFF' : '#444444',
+                          }}
+                        >
+                          {didPlay && showStats ? score : '\u2014'}
+                        </Text>
+                      </View>
+
+                      {/* Category columns */}
+                      {CATEGORY_COLS.map((col) => (
+                        <View key={col.key} style={{ width: COL_WIDTH, alignItems: 'center' }}>
+                          <Text
+                            style={{
+                              fontFamily: 'Urbanist_400Regular',
+                              fontSize: 12,
+                              color: didPlay && showStats ? '#AAAAAA' : '#444444',
+                            }}
+                          >
+                            {didPlay && showStats ? getCategoryPct(catStats, col.key) : '\u2014'}
+                          </Text>
+                        </View>
+                      ))}
+
+                      {/* Avg Speed */}
+                      <View style={{ width: SPEED_COL_WIDTH, alignItems: 'center' }}>
                         <Text
                           style={{
                             fontFamily: 'Urbanist_400Regular',
@@ -413,31 +460,18 @@ export default function LeaderboardTable({
                             color: didPlay && showStats ? '#AAAAAA' : '#444444',
                           }}
                         >
-                          {didPlay && showStats ? getCategoryPct(catStats, col.key) : '\u2014'}
+                          {didPlay && showStats && avgSpeed > 0
+                            ? `${avgSpeed.toFixed(1)}s`
+                            : '\u2014'}
                         </Text>
                       </View>
-                    ))}
-
-                    {/* Avg Speed */}
-                    <View style={{ width: SPEED_COL_WIDTH, alignItems: 'center' }}>
-                      <Text
-                        style={{
-                          fontFamily: 'Urbanist_400Regular',
-                          fontSize: 12,
-                          color: didPlay && showStats ? '#AAAAAA' : '#444444',
-                        }}
-                      >
-                        {didPlay && showStats && avgSpeed > 0
-                          ? `${avgSpeed.toFixed(1)}s`
-                          : '\u2014'}
-                      </Text>
                     </View>
                   </View>
-                </View>
-              );
-            })}
-          </View>
-        </ScrollView>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
       </View>
     </View>
   );

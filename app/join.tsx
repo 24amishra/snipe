@@ -22,6 +22,16 @@ export default function JoinScreen() {
         return;
       }
 
+      // Validate the invite link before doing anything else
+      if (groupId) {
+        const groupDoc = await getGroupDoc(groupId);
+        if (!groupDoc || groupDoc.inviteCode !== code) {
+          setState('invalid');
+          return;
+        }
+        setGroupName(groupDoc.name);
+      }
+
       const uid = auth.currentUser?.uid;
       if (!uid) {
         // Not logged in — save pending invite and redirect to login
@@ -31,15 +41,10 @@ export default function JoinScreen() {
       }
 
       try {
-        // If we have a groupId, check membership first
+        // If we have a groupId, check membership (link already validated above)
         if (groupId) {
           const groupDoc = await getGroupDoc(groupId);
-          if (!groupDoc) {
-            setState('invalid');
-            return;
-          }
-          setGroupName(groupDoc.name);
-          if (groupDoc.memberIds.includes(uid)) {
+          if (groupDoc && groupDoc.memberIds.includes(uid)) {
             setState('already_member');
             return;
           }
