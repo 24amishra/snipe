@@ -97,7 +97,7 @@ export default function JoinScreen() {
               You've joined {groupName}.
             </Text>
             <Pressable
-              onPress={() => router.replace('/(tabs)/leaderboard')}
+              onPress={() => router.replace('/(tabs)')}
               style={{
                 backgroundColor: '#22C55E',
                 borderRadius: 16,
@@ -107,7 +107,7 @@ export default function JoinScreen() {
               }}
             >
               <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 16, color: '#FFFFFF' }}>
-                View Leaderboard
+                Go Home
               </Text>
             </Pressable>
           </>
@@ -122,7 +122,7 @@ export default function JoinScreen() {
               You're already in {groupName}.
             </Text>
             <Pressable
-              onPress={() => router.replace('/(tabs)/leaderboard')}
+              onPress={() => router.replace('/(tabs)')}
               style={{
                 backgroundColor: '#FFFFFF',
                 borderRadius: 16,
@@ -132,7 +132,7 @@ export default function JoinScreen() {
               }}
             >
               <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 16, color: '#000000' }}>
-                View Leaderboard
+                Go Home
               </Text>
             </Pressable>
           </>
