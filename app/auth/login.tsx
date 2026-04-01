@@ -12,6 +12,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const { request: googleRequest, signInWithGoogle } = useGoogleAuth();
 
   const redirectAfterAuth = async () => {
@@ -22,6 +23,28 @@ export default function Login() {
       router.replace(`/join?groupId=${groupId}&code=${code}`);
     } else {
       router.replace('/(tabs)');
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setError('Enter your email address first');
+      return;
+    }
+    setError('');
+    try {
+      const { sendPasswordResetEmail } = await import('firebase/auth');
+      const { auth } = await import('../../lib/firebase');
+      await sendPasswordResetEmail(auth, email);
+      setResetSent(true);
+    } catch (e: any) {
+      if (e?.code === 'auth/invalid-email') {
+        setError('Invalid email address');
+      } else if (e?.code === 'auth/user-not-found') {
+        setResetSent(true);
+      } else {
+        setError(e?.message || 'Failed to send reset email');
+      }
     }
   };
 
@@ -101,6 +124,18 @@ export default function Login() {
               paddingVertical: 18,
             }}
           />
+
+          <Pressable onPress={handleForgotPassword} style={{ alignSelf: 'flex-end', marginTop: -8 }}>
+            <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 13, color: '#888888' }}>
+              Forgot password?
+            </Text>
+          </Pressable>
+
+          {resetSent ? (
+            <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#22C55E', textAlign: 'center' }}>
+              Password reset email sent. Check your inbox.
+            </Text>
+          ) : null}
 
           {error ? (
             <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#EF4444', textAlign: 'center' }}>
