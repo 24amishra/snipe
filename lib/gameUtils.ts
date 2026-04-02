@@ -67,6 +67,32 @@ export function haveScoresDropped(): boolean {
   return true;
 }
 
+// Returns the Mon–Sun date range for a given week (0 = current week, 1 = last week, etc.)
+export function getWeekDateRange(weeksAgo: number = 0): { start: string; end: string; dates: string[] } {
+  const now = new Date();
+  const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+
+  // Find Monday of current week
+  const day = estNow.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+
+  const monday = new Date(estNow);
+  monday.setDate(estNow.getDate() + diffToMonday - weeksAgo * 7);
+  monday.setHours(0, 0, 0, 0);
+
+  const dates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    dates.push(`${y}-${m}-${dd}`);
+  }
+
+  return { start: dates[0], end: dates[6], dates };
+}
+
 // Countdown to next 12pm EST (next quiz drop / score release)
 export function getNextQuizCountdown(): string {
   const now = new Date();

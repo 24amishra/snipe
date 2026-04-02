@@ -15,7 +15,7 @@ interface LeaderboardTableProps {
   onRemoveMember?: (userId: string, username: string) => void;
 }
 
-type SortColumn = 'score' | 'avgSpeed' | string;
+type SortColumn = 'score' | 'avg' | 'avgSpeed' | string;
 type SortDir = 'desc' | 'asc';
 
 const CATEGORY_COLS = CATEGORIES.map((cat) => ({
@@ -102,6 +102,9 @@ export default function LeaderboardTable({
       if (sortCol === 'score') {
         aVal = a.score;
         bVal = b.score;
+      } else if (sortCol === 'avg') {
+        aVal = a.score;
+        bVal = b.score;
       } else if (sortCol === 'avgSpeed') {
         aVal = a.avgSpeed;
         bVal = b.avgSpeed;
@@ -128,6 +131,9 @@ export default function LeaderboardTable({
       if (sortCol === 'score') {
         aVal = a.totalScore;
         bVal = b.totalScore;
+      } else if (sortCol === 'avg') {
+        aVal = a.gamesPlayed > 0 ? a.totalScore / a.gamesPlayed : 0;
+        bVal = b.gamesPlayed > 0 ? b.totalScore / b.gamesPlayed : 0;
       } else if (sortCol === 'avgSpeed') {
         aVal = a.avgSpeed ?? 0;
         bVal = b.avgSpeed ?? 0;
@@ -407,6 +413,7 @@ export default function LeaderboardTable({
                 }}
               >
                 {renderSortHeader('Score', 'score', COL_WIDTH)}
+                {renderSortHeader('Avg', 'avg', COL_WIDTH)}
                 {renderSortHeader('Wins', 'wins', COL_WIDTH)}
                 {CATEGORY_COLS.map((col) => renderSortHeader(col.label, col.key, COL_WIDTH))}
                 {renderSortHeader('Spd', 'avgSpeed', SPEED_COL_WIDTH)}
@@ -457,6 +464,25 @@ export default function LeaderboardTable({
                           }}
                         >
                           {didPlay && showStats ? score : '\u2014'}
+                        </Text>
+                      </View>
+
+                      {/* Avg Score/Game */}
+                      <View style={{ width: COL_WIDTH, alignItems: 'center' }}>
+                        <Text
+                          style={{
+                            fontFamily: 'Urbanist_400Regular',
+                            fontSize: 12,
+                            color: didPlay && showStats ? '#AAAAAA' : '#444444',
+                          }}
+                        >
+                          {didPlay && showStats
+                            ? isTodayRow
+                              ? '\u2014'
+                              : (row as LeaderboardEntry).gamesPlayed > 0
+                                ? Math.round((row as LeaderboardEntry).totalScore / (row as LeaderboardEntry).gamesPlayed)
+                                : 0
+                            : '\u2014'}
                         </Text>
                       </View>
 

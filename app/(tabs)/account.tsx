@@ -8,7 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import StatCard from '../../components/StatCard';
 import { cancelAllNotifications, requestNotificationPermissions, scheduleDailyPlayReminder } from '../../lib/notifications';
-import { getUserProfile, updateUsername, checkUsernameAvailable, type UserProfile } from '../../lib/firestore';
+import { getUserProfile, updateUsername, checkUsernameAvailable, getWeeklyStats, type UserProfile, type WeeklyStats } from '../../lib/firestore';
 import { auth } from '../../lib/firebase';
 
 export default function AccountTab() {
@@ -22,6 +22,7 @@ export default function AccountTab() {
   const [editUsername, setEditUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [usernameSaving, setUsernameSaving] = useState(false);
+  const [weeklyStats, setWeeklyStats] = useState<WeeklyStats | null>(null);
   const opacity = useSharedValue(0);
 
   const displayUsername = profile?.username ?? '';
@@ -67,6 +68,23 @@ export default function AccountTab() {
       setTimeout(() => setNotifLoading(false), 300);
     }).catch(() => setNotifLoading(false));
   }, []);
+
+  // Fetch weekly stats
+  useEffect(() => {
+    let cancelled = false;
+    const loadWeekly = async () => {
+      try {
+        const uid = auth.currentUser?.uid;
+        if (!uid || !profile) return;
+        const stats = await getWeeklyStats(uid, profile.groupIds ?? []);
+        if (!cancelled) setWeeklyStats(stats);
+      } catch (e) {
+        console.log('[SNIPE] Error fetching weekly stats:', e);
+      }
+    };
+    if (profile) loadWeekly();
+    return () => { cancelled = true; };
+  }, [profile]);
 
   const handleNotificationToggle = async (value: boolean) => {
     setNotificationsEnabled(value);
@@ -165,6 +183,168 @@ export default function AccountTab() {
         {displayCategories.map((cat) => (
           <StatCard key={cat.name} name={cat.name} accuracy={cat.accuracy} avgTime={cat.avgTime} />
         ))}
+
+        <View style={{ height: 1, backgroundColor: '#1A1A1A', marginVertical: 24 }} />
+
+        {/* Weekly Stats */}
+        <Text style={{
+          fontFamily: 'Urbanist_700Bold',
+          fontSize: 12,
+          color: '#888888',
+          letterSpacing: 2,
+          textTransform: 'uppercase',
+          marginBottom: 16,
+        }}>
+          THIS WEEK
+        </Text>
+
+        {!weeklyStats ? (
+          <View style={{ gap: 10, marginBottom: 0 }}>
+            <SkeletonLoader width={'100%' as any} height={56} borderRadius={12} />
+            <SkeletonLoader width={'100%' as any} height={56} borderRadius={12} />
+            <SkeletonLoader width={'100%' as any} height={56} borderRadius={12} />
+          </View>
+        ) : weeklyStats.gamesThisWeek === 0 ? (
+          <View style={{
+            borderWidth: 1,
+            borderColor: '#1A1A1A',
+            borderRadius: 12,
+            padding: 20,
+            alignItems: 'center',
+          }}>
+            <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#888888' }}>
+              No games played this week yet.
+            </Text>
+          </View>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {/* Score */}
+            <View style={{
+              backgroundColor: '#0A0A0A',
+              borderWidth: 1,
+              borderColor: '#1A1A1A',
+              borderRadius: 12,
+              padding: 16,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <View>
+                <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 12, color: '#888888', marginBottom: 4 }}>
+                  Score
+                </Text>
+                <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 20, color: '#FFFFFF' }}>
+                  {weeklyStats.score.avg} <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 13, color: '#888888' }}>avg</Text>
+                </Text>
+              </View>
+              {weeklyStats.score.delta !== null && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={{
+                    fontFamily: 'Urbanist_700Bold',
+                    fontSize: 13,
+                    color: weeklyStats.score.delta > 0 ? '#22C55E' : weeklyStats.score.delta < 0 ? '#EF4444' : '#888888',
+                  }}>
+                    {weeklyStats.score.delta > 0 ? '+' : ''}{weeklyStats.score.delta} from last week
+                  </Text>
+                  <Text style={{
+                    fontSize: 14,
+                    color: weeklyStats.score.delta > 0 ? '#22C55E' : weeklyStats.score.delta < 0 ? '#EF4444' : '#888888',
+                  }}>
+                    {weeklyStats.score.delta > 0 ? '\u2191' : weeklyStats.score.delta < 0 ? '\u2193' : ''}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Speed */}
+            <View style={{
+              backgroundColor: '#0A0A0A',
+              borderWidth: 1,
+              borderColor: '#1A1A1A',
+              borderRadius: 12,
+              padding: 16,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <View>
+                <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 12, color: '#888888', marginBottom: 4 }}>
+                  Speed
+                </Text>
+                <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 20, color: '#FFFFFF' }}>
+                  {weeklyStats.speed.avg}s <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 13, color: '#888888' }}>avg</Text>
+                </Text>
+              </View>
+              {weeklyStats.speed.delta !== null && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={{
+                    fontFamily: 'Urbanist_700Bold',
+                    fontSize: 13,
+                    color: weeklyStats.speed.delta < 0 ? '#22C55E' : weeklyStats.speed.delta > 0 ? '#EF4444' : '#888888',
+                  }}>
+                    {weeklyStats.speed.delta > 0 ? '+' : ''}{weeklyStats.speed.delta}s from last week
+                  </Text>
+                  <Text style={{
+                    fontSize: 14,
+                    color: weeklyStats.speed.delta < 0 ? '#22C55E' : weeklyStats.speed.delta > 0 ? '#EF4444' : '#888888',
+                  }}>
+                    {weeklyStats.speed.delta < 0 ? '\u2191' : weeklyStats.speed.delta > 0 ? '\u2193' : ''}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Rank */}
+            <View style={{
+              backgroundColor: '#0A0A0A',
+              borderWidth: 1,
+              borderColor: '#1A1A1A',
+              borderRadius: 12,
+              padding: 16,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <View>
+                <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 12, color: '#888888', marginBottom: 4 }}>
+                  Rank in group
+                </Text>
+                <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 20, color: '#FFFFFF' }}>
+                  {weeklyStats.rank.current !== null ? `#${weeklyStats.rank.current}` : '\u2014'}
+                </Text>
+              </View>
+              {weeklyStats.rank.current !== null && weeklyStats.rank.previous !== null && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={{
+                    fontFamily: 'Urbanist_700Bold',
+                    fontSize: 13,
+                    color: weeklyStats.rank.current < weeklyStats.rank.previous
+                      ? '#22C55E'
+                      : weeklyStats.rank.current > weeklyStats.rank.previous
+                        ? '#EF4444'
+                        : '#888888',
+                  }}>
+                    was #{weeklyStats.rank.previous} last week
+                  </Text>
+                  <Text style={{
+                    fontSize: 14,
+                    color: weeklyStats.rank.current < weeklyStats.rank.previous
+                      ? '#22C55E'
+                      : weeklyStats.rank.current > weeklyStats.rank.previous
+                        ? '#EF4444'
+                        : '#888888',
+                  }}>
+                    {weeklyStats.rank.current < weeklyStats.rank.previous
+                      ? '\u2191'
+                      : weeklyStats.rank.current > weeklyStats.rank.previous
+                        ? '\u2193'
+                        : ''}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
 
         <View style={{ height: 1, backgroundColor: '#1A1A1A', marginVertical: 24 }} />
 

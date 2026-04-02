@@ -10,13 +10,14 @@ import {
   query,
   where,
   getDocs,
+  limit,
   serverTimestamp,
   arrayUnion,
   increment,
   Timestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { getTodayDateString } from './gameUtils';
+import { getTodayDateString, getWeekDateRange } from './gameUtils';
 import { normalizeCategory } from './constants';
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -517,4 +518,171 @@ export async function getGroupTodayScores(
   // Sort by score descending
   todayEntries.sort((a, b) => b.score - a.score);
   return todayEntries;
+}
+
+// ─── Recently Missed Questions ──────────────────────────────────────
+
+export interface MissedQuestion {
+  questionId: string;
+  date: string;
+  category: string;
+  questionText: string;
+  selectedAnswer: string;
+  correctAnswer: string;
+}
+
+/**
+ * Fetches all missed questions from today's game for a user.
+ * Returns null if the user hasn't played today (distinct from empty array = played but got all correct).
+ * Uses batched query limited to today's date to prevent slow load times.
+ */
+export async function getTodayMissedQuestions(
+  userId: string,
+): Promise<MissedQuestion[] | null> {
+  const today = getTodayDateString();
+
+  // Single batched query: only fetch today's result for this user
+  const q = query(
+    collection(db, 'gameResults'),
+    where('userId', '==', userId),
+    where('date', '==', today),
+    limit(1),
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null; // hasn't played today
+
+  const result = snap.docs[0].data() as GameResult;
+  const wrongEntries = result.questions.filter((e) => !e.correct);
+  if (wrongEntries.length === 0) return [];
+
+  // Lazy-load today's questions in a single batch
+  const dailyQs = await getTodayQuestions(today);
+
+  const missed: MissedQuestion[] = [];
+  for (const wrong of wrongEntries) {
+    const matchingQ = dailyQs.find((dq) => dq.id === wrong.questionId);
+    if (matchingQ) {
+      missed.push({
+        questionId: wrong.questionId,
+        date: today,
+        category: wrong.category,
+        questionText: matchingQ.question,
+        selectedAnswer: wrong.selectedAnswer ?? 'No answer',
+        correctAnswer: matchingQ.answer,
+      });
+    }
+  }
+
+  return missed;
+}
+
+// ─── Weekly Stats ───────────────────────────────────────────────────
+
+export interface WeeklyStats {
+  score: { avg: number; delta: number | null };
+  speed: { avg: number; delta: number | null };
+  rank: { current: number | null; previous: number | null };
+  gamesThisWeek: number;
+}
+
+async function getAllUserGames(userId: string): Promise<GameResult[]> {
+  const q = query(collection(db, 'gameResults'), where('userId', '==', userId));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data() as GameResult);
+}
+
+function computeWeekAggregates(
+  games: GameResult[],
+  dates: string[],
+): { avgScore: number; avgSpeed: number; totalScore: number; count: number } {
+  const dateSet = new Set(dates);
+  const weekGames = games.filter((g) => dateSet.has(g.date));
+  if (weekGames.length === 0) return { avgScore: 0, avgSpeed: 0, totalScore: 0, count: 0 };
+
+  const totalScore = weekGames.reduce((s, g) => s + g.score, 0);
+  let totalTime = 0;
+  let totalQuestions = 0;
+  for (const game of weekGames) {
+    for (const q of game.questions) {
+      totalTime += 8 - q.timeRemaining;
+      totalQuestions += 1;
+    }
+  }
+
+  return {
+    avgScore: totalScore / weekGames.length,
+    avgSpeed: totalQuestions > 0 ? totalTime / totalQuestions : 0,
+    totalScore,
+    count: weekGames.length,
+  };
+}
+
+export async function getWeeklyStats(
+  userId: string,
+  groupIds: string[],
+): Promise<WeeklyStats> {
+  const thisWeek = getWeekDateRange(0);
+  const lastWeek = getWeekDateRange(1);
+
+  let userGames: GameResult[];
+  let currentRank: number | null = null;
+  let previousRank: number | null = null;
+
+  if (groupIds.length > 0) {
+    // Fetch group doc, then all member games in parallel
+    const groupSnap = await getDoc(doc(db, 'groups', groupIds[0]));
+    if (groupSnap.exists()) {
+      const groupData = groupSnap.data() as GroupDoc;
+      const memberGames = await Promise.all(
+        groupData.memberIds.map((id) => getAllUserGames(id)),
+      );
+
+      // Extract user's own games from the batch
+      const userIdx = groupData.memberIds.indexOf(userId);
+      userGames = userIdx >= 0 ? memberGames[userIdx] : await getAllUserGames(userId);
+
+      // This-week ranking (only members who scored)
+      const thisRanking = groupData.memberIds
+        .map((id, i) => ({
+          userId: id,
+          totalScore: computeWeekAggregates(memberGames[i], thisWeek.dates).totalScore,
+        }))
+        .filter((r) => r.totalScore > 0)
+        .sort((a, b) => b.totalScore - a.totalScore);
+
+      const thisPos = thisRanking.findIndex((r) => r.userId === userId);
+      currentRank = thisPos >= 0 ? thisPos + 1 : null;
+
+      // Last-week ranking
+      const lastRanking = groupData.memberIds
+        .map((id, i) => ({
+          userId: id,
+          totalScore: computeWeekAggregates(memberGames[i], lastWeek.dates).totalScore,
+        }))
+        .filter((r) => r.totalScore > 0)
+        .sort((a, b) => b.totalScore - a.totalScore);
+
+      const lastPos = lastRanking.findIndex((r) => r.userId === userId);
+      previousRank = lastPos >= 0 ? lastPos + 1 : null;
+    } else {
+      userGames = await getAllUserGames(userId);
+    }
+  } else {
+    userGames = await getAllUserGames(userId);
+  }
+
+  const thisAgg = computeWeekAggregates(userGames, thisWeek.dates);
+  const lastAgg = computeWeekAggregates(userGames, lastWeek.dates);
+
+  const scoreDelta = lastAgg.count > 0 ? Math.round(thisAgg.avgScore - lastAgg.avgScore) : null;
+  const speedDelta = lastAgg.count > 0
+    ? Math.round((thisAgg.avgSpeed - lastAgg.avgSpeed) * 10) / 10
+    : null;
+
+  return {
+    score: { avg: Math.round(thisAgg.avgScore), delta: scoreDelta },
+    speed: { avg: Math.round(thisAgg.avgSpeed * 10) / 10, delta: speedDelta },
+    rank: { current: currentRank, previous: previousRank },
+    gamesThisWeek: thisAgg.count,
+  };
 }
