@@ -7,7 +7,7 @@ import { Plus, Users, Info } from 'lucide-react-native';
 import SnipeWordmark from '../../components/SnipeWordmark';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import { getMidnightCountdown, getTodayDateString, isQuizWindowOpen, getNextQuizCountdown } from '../../lib/gameUtils';
-import { createGroup, joinGroup, getUserGroups, getUserGameForDate } from '../../lib/firestore';
+import { createGroup, joinGroup, getUserGroups, getUserGameForDate, getGroupAvgForDate, getDailyGlobalAvg } from '../../lib/firestore';
 import { auth } from '../../lib/firebase';
 
 export default function TodayTab() {
@@ -24,6 +24,9 @@ export default function TodayTab() {
   const [modalSuccess, setModalSuccess] = useState(false);
   const [modalError, setModalError] = useState('');
   const [userGroups, setUserGroups] = useState<Array<{ id: string; name: string; memberCount: number }>>([]);
+  const [todayScore, setTodayScore] = useState<number | null>(null);
+  const [groupAvg, setGroupAvg] = useState<number | null>(null);
+  const [appAvg, setAppAvg] = useState<number | null>(null);
 
   // Reload user data (played status + groups) every time the tab is focused
   useFocusEffect(
@@ -33,12 +36,24 @@ export default function TodayTab() {
         try {
           const uid = auth.currentUser?.uid;
           if (uid) {
-            const [todayGame, groups] = await Promise.all([
-              getUserGameForDate(uid, getTodayDateString()),
+            const todayDate = getTodayDateString();
+            const [todayGame, groups, globalAvg] = await Promise.all([
+              getUserGameForDate(uid, todayDate),
               getUserGroups(uid),
+              getDailyGlobalAvg(todayDate),
             ]);
             if (!cancelled) {
-              if (todayGame) setHasPlayedToday(true);
+              if (todayGame) {
+                setHasPlayedToday(true);
+                setTodayScore(todayGame.score);
+                setAppAvg(globalAvg);
+                // Fetch group avg from first group
+                if (groups.length > 0) {
+                  getGroupAvgForDate(groups[0].id, todayDate).then((avg) => {
+                    if (!cancelled) setGroupAvg(avg);
+                  });
+                }
+              }
               setUserGroups(groups);
             }
           }
@@ -63,15 +78,30 @@ export default function TodayTab() {
 
   // Listen for game completion via global flag
   useEffect(() => {
-    const checkGameComplete = () => {
+    const checkGameComplete = async () => {
       if ((global as any).__snipeGameComplete) {
         setHasPlayedToday(true);
         (global as any).__snipeGameComplete = false;
+        // Fetch score stats after game completion
+        const uid = auth.currentUser?.uid;
+        if (uid) {
+          const todayDate = getTodayDateString();
+          const [todayGame, globalAvg] = await Promise.all([
+            getUserGameForDate(uid, todayDate),
+            getDailyGlobalAvg(todayDate),
+          ]);
+          if (todayGame) setTodayScore(todayGame.score);
+          setAppAvg(globalAvg);
+          if (userGroups.length > 0) {
+            const avg = await getGroupAvgForDate(userGroups[0].id, todayDate);
+            setGroupAvg(avg);
+          }
+        }
       }
     };
     const interval = setInterval(checkGameComplete, 500);
     return () => clearInterval(interval);
-  }, []);
+  }, [userGroups]);
 
   const handleCreateGroup = async () => {
     setModalLoading(true);
@@ -209,6 +239,52 @@ export default function TodayTab() {
             <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 48, color: '#FFFFFF', fontVariant: ['tabular-nums'] }}>
               {countdown}
             </Text>
+
+            {/* Score Stats Grid */}
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 28, width: '100%' }}>
+              <View style={{
+                flex: 1,
+                backgroundColor: '#111111',
+                borderRadius: 16,
+                paddingVertical: 16,
+                alignItems: 'center',
+              }}>
+                <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 24, color: '#FFFFFF' }}>
+                  {todayScore ?? '—'}
+                </Text>
+                <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 11, color: '#888888', marginTop: 4 }}>
+                  YOUR SCORE
+                </Text>
+              </View>
+              <View style={{
+                flex: 1,
+                backgroundColor: '#111111',
+                borderRadius: 16,
+                paddingVertical: 16,
+                alignItems: 'center',
+              }}>
+                <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 24, color: '#FFFFFF' }}>
+                  {groupAvg ?? '—'}
+                </Text>
+                <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 11, color: '#888888', marginTop: 4 }}>
+                  GROUP AVG
+                </Text>
+              </View>
+              <View style={{
+                flex: 1,
+                backgroundColor: '#111111',
+                borderRadius: 16,
+                paddingVertical: 16,
+                alignItems: 'center',
+              }}>
+                <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 24, color: '#FFFFFF' }}>
+                  {appAvg ?? '—'}
+                </Text>
+                <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 11, color: '#888888', marginTop: 4 }}>
+                  APP AVG
+                </Text>
+              </View>
+            </View>
           </View>
         )}
 

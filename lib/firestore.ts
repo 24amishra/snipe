@@ -190,6 +190,21 @@ export async function saveGameResult(
       newGamesPlayed: userData.gamesPlayed + 1,
     });
   }
+
+  // 4. Update global daily stats (for app-wide average)
+  const dailyStatsRef = doc(db, 'dailyStats', date);
+  const dailyStatsSnap = await getDoc(dailyStatsRef);
+  if (dailyStatsSnap.exists()) {
+    await updateDoc(dailyStatsRef, {
+      totalScore: increment(score),
+      playerCount: increment(1),
+    });
+  } else {
+    await setDoc(dailyStatsRef, {
+      totalScore: score,
+      playerCount: 1,
+    });
+  }
 }
 
 export async function getUserGameForDate(
@@ -685,4 +700,46 @@ export async function getWeeklyStats(
     rank: { current: currentRank, previous: previousRank },
     gamesThisWeek: thisAgg.count,
   };
+}
+
+// ─── Daily Stats (Global Average) ───────────────────────────────────
+
+export async function getDailyGlobalAvg(date: string): Promise<number | null> {
+  const snap = await getDoc(doc(db, 'dailyStats', date));
+  if (!snap.exists()) return null;
+  const data = snap.data() as { totalScore: number; playerCount: number };
+  if (data.playerCount === 0) return null;
+  return Math.round(data.totalScore / data.playerCount);
+}
+
+// ─── Group Average for a Date ───────────────────────────────────────
+
+export async function getGroupAvgForDate(
+  groupId: string,
+  date: string,
+): Promise<number | null> {
+  const groupSnap = await getDoc(doc(db, 'groups', groupId));
+  if (!groupSnap.exists()) return null;
+  const groupData = groupSnap.data() as GroupDoc;
+
+  let totalScore = 0;
+  let playerCount = 0;
+
+  for (const memberId of groupData.memberIds) {
+    const resultQuery = query(
+      collection(db, 'gameResults'),
+      where('userId', '==', memberId),
+      where('date', '==', date),
+      limit(1),
+    );
+    const resultSnap = await getDocs(resultQuery);
+    if (!resultSnap.empty) {
+      const gameResult = resultSnap.docs[0].data() as GameResult;
+      totalScore += gameResult.score;
+      playerCount += 1;
+    }
+  }
+
+  if (playerCount === 0) return null;
+  return Math.round(totalScore / playerCount);
 }
