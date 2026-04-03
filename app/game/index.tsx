@@ -21,7 +21,7 @@ import { auth } from '../../lib/firebase';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const TOTAL_QUESTIONS = 7;
-const TIME_PER_QUESTION = 8; // seconds
+const TIME_PER_QUESTION = 10; // seconds
 
 type GamePhase = 'loading' | 'no_questions' | 'ready' | 'resume' | 'playing' | 'gameover';
 
