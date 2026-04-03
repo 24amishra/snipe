@@ -10,6 +10,7 @@ import {
   Urbanist_700Bold,
   Urbanist_800ExtraBold,
 } from '@expo-google-fonts/urbanist';
+import { Analytics } from '@vercel/analytics/react';
 import { requestNotificationPermissions, scheduleDailyPlayReminder } from '../lib/notifications';
 import "../global.css";
 
@@ -52,6 +53,7 @@ export default function RootLayout() {
           <meta name="theme-color" content="#000000" />
         </Head>
       )}
+      {Platform.OS === 'web' && <Analytics />}
       <StatusBar style="light" />
       <Stack
         screenOptions={{
