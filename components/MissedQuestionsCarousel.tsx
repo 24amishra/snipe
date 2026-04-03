@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { View, Text, ScrollView, Dimensions, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import type { MissedQuestion } from '../lib/firestore';
 
 const TIME_PER_QUESTION = 10;
-const AUTO_CYCLE_MS = 4000;
 
 interface Props {
   missedQuestions: MissedQuestion[];
@@ -12,32 +11,12 @@ interface Props {
 export default function MissedQuestionsCarousel({ missedQuestions }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cardWidth = Dimensions.get('window').width - 40; // 20px padding each side
-
-  const startAutoCycle = () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (missedQuestions.length <= 1) return;
-    intervalRef.current = setInterval(() => {
-      setActiveIndex((prev) => {
-        const next = (prev + 1) % missedQuestions.length;
-        scrollRef.current?.scrollTo({ x: next * cardWidth, animated: true });
-        return next;
-      });
-    }, AUTO_CYCLE_MS);
-  };
-
-  useEffect(() => {
-    startAutoCycle();
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [missedQuestions.length, cardWidth]);
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const index = Math.round(e.nativeEvent.contentOffset.x / cardWidth);
     if (index >= 0 && index < missedQuestions.length) {
       setActiveIndex(index);
-      // Reset auto-cycle timer so it doesn't jump right after a manual swipe
-      startAutoCycle();
     }
   };
 
@@ -53,9 +32,8 @@ export default function MissedQuestionsCarousel({ missedQuestions }: Props) {
         onMomentumScrollEnd={handleScroll}
         decelerationRate="fast"
         snapToInterval={cardWidth}
-        contentContainerStyle={{ gap: 0 }}
       >
-        {missedQuestions.map((q, i) => {
+        {missedQuestions.map((q) => {
           const speed = Math.round((TIME_PER_QUESTION - q.timeRemaining) * 10) / 10;
           const isTimeout = q.selectedAnswer === 'No answer';
 
