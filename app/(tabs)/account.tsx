@@ -8,7 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import StatCard from '../../components/StatCard';
 import { cancelAllNotifications, requestNotificationPermissions, scheduleDailyPlayReminder } from '../../lib/notifications';
-import { getUserProfile, updateUsername, checkUsernameAvailable, getWeeklyStats, type UserProfile, type WeeklyStats } from '../../lib/firestore';
+import { getUserProfile, updateUsername, checkUsernameAvailable, getWeeklyStats, getTodayMissedQuestions, type UserProfile, type WeeklyStats, type MissedQuestion } from '../../lib/firestore';
+import MissedQuestionsCarousel from '../../components/MissedQuestionsCarousel';
 import { auth } from '../../lib/firebase';
 
 export default function AccountTab() {
@@ -23,6 +24,7 @@ export default function AccountTab() {
   const [usernameError, setUsernameError] = useState('');
   const [usernameSaving, setUsernameSaving] = useState(false);
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStats | null>(null);
+  const [missedQuestions, setMissedQuestions] = useState<MissedQuestion[] | null>(null);
   const opacity = useSharedValue(0);
 
   const displayUsername = profile?.username ?? '';
@@ -47,6 +49,10 @@ export default function AccountTab() {
           if (!cancelled && p) {
             setProfile(p);
             setEditUsername(p.username);
+          }
+          const missed = await getTodayMissedQuestions(uid);
+          if (!cancelled) {
+            setMissedQuestions(missed);
           }
         }
       } catch (e) {
@@ -166,6 +172,49 @@ export default function AccountTab() {
             {displayWins} wins
           </Text>
         </View>
+
+        {/* Today's Review */}
+        <View style={{ height: 1, backgroundColor: '#1A1A1A', marginVertical: 24 }} />
+        <Text style={{
+          fontFamily: 'Urbanist_700Bold',
+          fontSize: 12,
+          color: '#888888',
+          letterSpacing: 2,
+          textTransform: 'uppercase',
+          marginBottom: 16,
+        }}>
+          TODAY'S REVIEW
+        </Text>
+        {missedQuestions === null ? (
+          <Pressable
+            onPress={() => router.push('/game')}
+            style={{
+              borderWidth: 1,
+              borderColor: '#1A1A1A',
+              borderRadius: 20,
+              padding: 20,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#FFFFFF' }}>
+              Play the game first
+            </Text>
+          </Pressable>
+        ) : missedQuestions.length === 0 ? (
+          <View style={{
+            borderWidth: 1,
+            borderColor: '#1A1A1A',
+            borderRadius: 20,
+            padding: 20,
+            alignItems: 'center',
+          }}>
+            <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#888888' }}>
+              No missed questions
+            </Text>
+          </View>
+        ) : (
+          <MissedQuestionsCarousel missedQuestions={missedQuestions} />
+        )}
 
         <View style={{ height: 1, backgroundColor: '#1A1A1A', marginVertical: 24 }} />
 

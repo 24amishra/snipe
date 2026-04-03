@@ -544,6 +544,7 @@ export interface MissedQuestion {
   questionText: string;
   selectedAnswer: string;
   correctAnswer: string;
+  timeRemaining: number;
 }
 
 /**
@@ -584,6 +585,7 @@ export async function getTodayMissedQuestions(
         questionText: matchingQ.question,
         selectedAnswer: wrong.selectedAnswer ?? 'No answer',
         correctAnswer: matchingQ.answer,
+        timeRemaining: wrong.timeRemaining,
       });
     }
   }
