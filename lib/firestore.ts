@@ -89,6 +89,17 @@ export interface TodayEntry {
   categoryStats: Record<string, { correct: number; total: number }>;
 }
 
+// ─── Helpers ────────────────────────────────────────────────────────
+
+// Chunk array into groups of N (Firestore 'in' query limit = 30)
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
 // ─── Users ───────────────────────────────────────────────────────────
 
 export async function createUserProfile(
@@ -482,28 +493,40 @@ export async function getGroupTodayScores(
   if (!groupSnap.exists()) return [];
   const groupData = groupSnap.data() as GroupDoc;
 
-  // Fetch today's game results for all members
-  const todayEntries: TodayEntry[] = [];
+  if (groupData.memberIds.length === 0) return [];
 
-  for (const memberId of groupData.memberIds) {
-    const resultQuery = query(
+  // Batch-fetch today's game results for all members (chunks of 30)
+  const memberChunks = chunkArray(groupData.memberIds, 30);
+  const gameResultsByUser = new Map<string, GameResult>();
+
+  const resultPromises = memberChunks.map(async (chunk) => {
+    const q = query(
       collection(db, 'gameResults'),
-      where('userId', '==', memberId),
+      where('userId', 'in', chunk),
       where('date', '==', date),
     );
-    const resultSnap = await getDocs(resultQuery);
+    const snap = await getDocs(q);
+    for (const d of snap.docs) {
+      const result = d.data() as GameResult;
+      gameResultsByUser.set(result.userId, result);
+    }
+  });
 
-    if (resultSnap.empty) continue;
+  // Fetch all leaderboard entries in one read (for usernames)
+  const lbPromise = getDocs(collection(db, 'groups', groupId, 'leaderboard'));
 
-    const gameResult = resultSnap.docs[0].data() as GameResult;
+  await Promise.all([...resultPromises, lbPromise]);
 
-    // Get username from leaderboard entry
-    const lbSnap = await getDoc(doc(db, 'groups', groupId, 'leaderboard', memberId));
-    const username = lbSnap.exists()
-      ? (lbSnap.data() as LeaderboardEntry).username
-      : 'unknown';
+  const lbSnap = await lbPromise;
+  const usernameMap = new Map<string, string>();
+  for (const d of lbSnap.docs) {
+    const entry = d.data() as LeaderboardEntry;
+    usernameMap.set(entry.userId, entry.username);
+  }
 
-    // Build per-category stats for today
+  // Build today entries from results
+  const todayEntries: TodayEntry[] = [];
+  gameResultsByUser.forEach((gameResult, memberId) => {
     const categoryStats: Record<string, { correct: number; total: number }> = {};
     let totalTime = 0;
     for (const q of gameResult.questions) {
@@ -523,12 +546,12 @@ export async function getGroupTodayScores(
 
     todayEntries.push({
       userId: memberId,
-      username,
+      username: usernameMap.get(memberId) ?? 'unknown',
       score: gameResult.score,
       avgSpeed,
       categoryStats,
     });
-  }
+  });
 
   // Sort by score descending
   todayEntries.sort((a, b) => b.score - a.score);
@@ -602,10 +625,34 @@ export interface WeeklyStats {
   gamesThisWeek: number;
 }
 
-async function getAllUserGames(userId: string): Promise<GameResult[]> {
-  const q = query(collection(db, 'gameResults'), where('userId', '==', userId));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => d.data() as GameResult);
+// Batch-fetch game results for multiple users, filtered to specific dates in memory.
+// Uses chunked 'in' queries on userId (Firestore doesn't allow two 'in' clauses).
+async function getBatchedGamesForDates(
+  memberIds: string[],
+  dates: string[],
+): Promise<Map<string, GameResult[]>> {
+  const dateSet = new Set(dates);
+  const gamesByUser = new Map<string, GameResult[]>();
+
+  const memberChunks = chunkArray(memberIds, 30);
+  await Promise.all(
+    memberChunks.map(async (chunk) => {
+      const q = query(
+        collection(db, 'gameResults'),
+        where('userId', 'in', chunk),
+      );
+      const snap = await getDocs(q);
+      for (const d of snap.docs) {
+        const result = d.data() as GameResult;
+        if (!dateSet.has(result.date)) continue;
+        const existing = gamesByUser.get(result.userId) ?? [];
+        existing.push(result);
+        gamesByUser.set(result.userId, existing);
+      }
+    }),
+  );
+
+  return gamesByUser;
 }
 
 function computeWeekAggregates(
@@ -640,29 +687,28 @@ export async function getWeeklyStats(
 ): Promise<WeeklyStats> {
   const thisWeek = getWeekDateRange(0);
   const lastWeek = getWeekDateRange(1);
+  const allDates = [...thisWeek.dates, ...lastWeek.dates];
 
   let userGames: GameResult[];
   let currentRank: number | null = null;
   let previousRank: number | null = null;
 
   if (groupIds.length > 0) {
-    // Fetch group doc, then all member games in parallel
     const groupSnap = await getDoc(doc(db, 'groups', groupIds[0]));
     if (groupSnap.exists()) {
       const groupData = groupSnap.data() as GroupDoc;
-      const memberGames = await Promise.all(
-        groupData.memberIds.map((id) => getAllUserGames(id)),
-      );
 
-      // Extract user's own games from the batch
-      const userIdx = groupData.memberIds.indexOf(userId);
-      userGames = userIdx >= 0 ? memberGames[userIdx] : await getAllUserGames(userId);
+      // Single batched fetch for all members, filtered to the 14 relevant dates
+      const gamesByUser = await getBatchedGamesForDates(groupData.memberIds, allDates);
+
+      // Extract user's own games
+      userGames = gamesByUser.get(userId) ?? [];
 
       // This-week ranking (only members who scored)
       const thisRanking = groupData.memberIds
-        .map((id, i) => ({
+        .map((id) => ({
           userId: id,
-          totalScore: computeWeekAggregates(memberGames[i], thisWeek.dates).totalScore,
+          totalScore: computeWeekAggregates(gamesByUser.get(id) ?? [], thisWeek.dates).totalScore,
         }))
         .filter((r) => r.totalScore > 0)
         .sort((a, b) => b.totalScore - a.totalScore);
@@ -672,9 +718,9 @@ export async function getWeeklyStats(
 
       // Last-week ranking
       const lastRanking = groupData.memberIds
-        .map((id, i) => ({
+        .map((id) => ({
           userId: id,
-          totalScore: computeWeekAggregates(memberGames[i], lastWeek.dates).totalScore,
+          totalScore: computeWeekAggregates(gamesByUser.get(id) ?? [], lastWeek.dates).totalScore,
         }))
         .filter((r) => r.totalScore > 0)
         .sort((a, b) => b.totalScore - a.totalScore);
@@ -682,10 +728,12 @@ export async function getWeeklyStats(
       const lastPos = lastRanking.findIndex((r) => r.userId === userId);
       previousRank = lastPos >= 0 ? lastPos + 1 : null;
     } else {
-      userGames = await getAllUserGames(userId);
+      const gamesByUser = await getBatchedGamesForDates([userId], allDates);
+      userGames = gamesByUser.get(userId) ?? [];
     }
   } else {
-    userGames = await getAllUserGames(userId);
+    const gamesByUser = await getBatchedGamesForDates([userId], allDates);
+    userGames = gamesByUser.get(userId) ?? [];
   }
 
   const thisAgg = computeWeekAggregates(userGames, thisWeek.dates);
@@ -724,23 +772,28 @@ export async function getGroupAvgForDate(
   if (!groupSnap.exists()) return null;
   const groupData = groupSnap.data() as GroupDoc;
 
+  if (groupData.memberIds.length === 0) return null;
+
+  // Batch-fetch game results for all members on this date (chunks of 30)
+  const memberChunks = chunkArray(groupData.memberIds, 30);
   let totalScore = 0;
   let playerCount = 0;
 
-  for (const memberId of groupData.memberIds) {
-    const resultQuery = query(
-      collection(db, 'gameResults'),
-      where('userId', '==', memberId),
-      where('date', '==', date),
-      limit(1),
-    );
-    const resultSnap = await getDocs(resultQuery);
-    if (!resultSnap.empty) {
-      const gameResult = resultSnap.docs[0].data() as GameResult;
-      totalScore += gameResult.score;
-      playerCount += 1;
-    }
-  }
+  await Promise.all(
+    memberChunks.map(async (chunk) => {
+      const q = query(
+        collection(db, 'gameResults'),
+        where('userId', 'in', chunk),
+        where('date', '==', date),
+      );
+      const snap = await getDocs(q);
+      for (const d of snap.docs) {
+        const gameResult = d.data() as GameResult;
+        totalScore += gameResult.score;
+        playerCount += 1;
+      }
+    }),
+  );
 
   if (playerCount === 0) return null;
   return Math.round(totalScore / playerCount);
