@@ -3,6 +3,9 @@
 # dependencies
 node_modules/
 
+# Firebase service account key (NEVER commit)
+serviceAccountKey.json
+
 # Expo
 .expo/
 dist/

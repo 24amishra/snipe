@@ -67,9 +67,34 @@ export const awardDailyWinners = onSchedule(
       return;
     }
 
+    // ── Fetch ALL game results for today in one query ────────────────
+    // This replaces the N+1 pattern (one query per member per group)
+    const allResultsSnap = await db
+      .collection("gameResults")
+      .where("date", "==", estDateStr)
+      .get();
+
+    // Build a map: userId → { score, totalTime }
+    type MemberResult = { userId: string; score: number; totalTime: number };
+    const resultsByUser = new Map<string, MemberResult>();
+    for (const doc of allResultsSnap.docs) {
+      const result = doc.data() as GameResult;
+      if (resultsByUser.has(result.userId)) continue; // first result wins (shouldn't have dupes)
+      const totalTime = (result.questions ?? []).reduce(
+        (sum, q) => sum + (8 - q.timeRemaining),
+        0,
+      );
+      resultsByUser.set(result.userId, {
+        userId: result.userId,
+        score: result.score,
+        totalTime,
+      });
+    }
+
     // Track wins per userId across all groups
     const winsPerUser: Record<string, number> = {};
     const winnersMap: Record<string, string> = {}; // groupId → winnerId
+    const batch = db.batch();
 
     for (const groupDoc of groupsSnap.docs) {
       const groupId = groupDoc.id;
@@ -78,31 +103,11 @@ export const awardDailyWinners = onSchedule(
 
       if (memberIds.length === 0) continue;
 
-      // Fetch game results for all members on this date
-      type MemberResult = { userId: string; score: number; totalTime: number };
+      // Look up each member's result from the pre-fetched map
       const memberResults: MemberResult[] = [];
-
       for (const memberId of memberIds) {
-        const resultSnap = await db
-          .collection("gameResults")
-          .where("userId", "==", memberId)
-          .where("date", "==", estDateStr)
-          .limit(1)
-          .get();
-
-        if (resultSnap.empty) continue;
-
-        const result = resultSnap.docs[0].data() as GameResult;
-        const totalTime = (result.questions ?? []).reduce(
-          (sum, q) => sum + (8 - q.timeRemaining),
-          0,
-        );
-
-        memberResults.push({
-          userId: memberId,
-          score: result.score,
-          totalTime,
-        });
+        const r = resultsByUser.get(memberId);
+        if (r) memberResults.push(r);
       }
 
       if (memberResults.length === 0) continue;
@@ -118,21 +123,24 @@ export const awardDailyWinners = onSchedule(
       // Skip if the best score is 0 (no one really played)
       if (winner.score === 0) continue;
 
-      // Increment wins on the group leaderboard
+      // Batch the leaderboard win increment
       const leaderboardRef = db.doc(
         `groups/${groupId}/leaderboard/${winner.userId}`,
       );
-      await leaderboardRef.update({ wins: FieldValue.increment(1) });
+      batch.update(leaderboardRef, { wins: FieldValue.increment(1) });
 
       winnersMap[groupId] = winner.userId;
       winsPerUser[winner.userId] = (winsPerUser[winner.userId] ?? 0) + 1;
     }
 
-    // ── Increment totalWins on each winner's user profile ────────────
+    // Batch the user profile win increments
     for (const [userId, count] of Object.entries(winsPerUser)) {
       const userRef = db.doc(`users/${userId}`);
-      await userRef.update({ totalWins: FieldValue.increment(count) });
+      batch.update(userRef, { totalWins: FieldValue.increment(count) });
     }
+
+    // Commit all writes in one batch
+    await batch.commit();
 
     // ── Write idempotency guard ──────────────────────────────────────
     await guardRef.set({

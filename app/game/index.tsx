@@ -15,18 +15,26 @@ import SkeletonLoader from '../../components/SkeletonLoader';
 import TimerBar from '../../components/TimerBar';
 import { calculateScore, scoreForQuestion, getMidnightCountdown, getTodayDateString } from '../../lib/gameUtils';
 import type { QuestionResult, GameSession } from '../../lib/gameUtils';
-import { scheduleMidnightScoreNotification } from '../../lib/notifications';
+import { scheduleDailyNotification } from '../../lib/notifications';
 import { saveGameResult, getTodayQuestions, type QuestionEntry, type QuizQuestion } from '../../lib/firestore';
 import { auth } from '../../lib/firebase';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const TOTAL_QUESTIONS = 7;
-const TIME_PER_QUESTION = 10; // seconds
+const TIME_PER_QUESTION = 8; // seconds — must match scoreForQuestion() which uses 8s
 
 type GamePhase = 'loading' | 'no_questions' | 'ready' | 'resume' | 'playing' | 'gameover';
 
 export default function GameScreen() {
   const router = useRouter();
+
+  // Auth guard — redirect to login if not authenticated
+  useEffect(() => {
+    if (!auth.currentUser) {
+      router.replace('/auth/login');
+    }
+  }, []);
+
   const [phase, setPhase] = useState<GamePhase>('loading');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [results, setResults] = useState<QuestionResult[]>([]);
@@ -186,7 +194,7 @@ export default function GameScreen() {
         setFinalScore(score);
         setResults(updatedResults);
         AsyncStorage.removeItem('snipe_session');
-        scheduleMidnightScoreNotification();
+        scheduleDailyNotification();
         (global as any).__snipeGameComplete = true;
         setPhase('gameover');
 

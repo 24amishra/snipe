@@ -11,7 +11,6 @@ import {
   Urbanist_800ExtraBold,
 } from '@expo-google-fonts/urbanist';
 import { Analytics } from '@vercel/analytics/react';
-import { requestNotificationPermissions, scheduleDailyPlayReminder } from '../lib/notifications';
 import "../global.css";
 
 SplashScreen.preventAutoHideAsync();
@@ -28,18 +27,6 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
-
-  useEffect(() => {
-    // Request notification permissions on first launch after login
-    async function setupNotifications() {
-      const granted = await requestNotificationPermissions();
-      if (granted) {
-        // TODO: Skip if user already played today (check Firestore)
-        await scheduleDailyPlayReminder();
-      }
-    }
-    setupNotifications();
-  }, []);
 
   if (!fontsLoaded) {
     return null;

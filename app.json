@@ -14,9 +14,9 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.snipe.app",
+      "bundleIdentifier": "snipe-app",
       "associatedDomains": [
-        "applinks:snipe.app",
+        "applinks:snipe-psi.vercel.app",
         "applinks:snipe.app"
       ],
       "infoPlist": {
@@ -65,7 +65,13 @@
       "expo-router",
       "expo-font",
       "expo-web-browser",
-      "expo-notifications"
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#000000"
+        }
+      ]
     ],
     "extra": {
       "router": {},

@@ -44,15 +44,28 @@ export function getMidnightCountdown(): string {
 // The game day flips at 12pm EST — after noon EST, this returns tomorrow's date
 // because that's when the next day's questions go live.
 export function getTodayDateString(): string {
+  // Use Intl.DateTimeFormat for reliable timezone handling on all platforms (Hermes/JSC/V8)
+  // toLocaleString round-tripping breaks on iOS/Android native runtimes
   const now = new Date();
-  const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  if (estNow.getHours() >= 12) {
-    estNow.setDate(estNow.getDate() + 1);
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const hourFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    hour12: false,
+  });
+  const estHour = parseInt(hourFormatter.format(now), 10);
+
+  if (estHour >= 12) {
+    // After noon EST — advance to next day
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    return formatter.format(tomorrow);
   }
-  const y = estNow.getFullYear();
-  const m = String(estNow.getMonth() + 1).padStart(2, '0');
-  const d = String(estNow.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return formatter.format(now);
 }
 
 // Quiz drops every day at 12pm EST. It stays open until the next 12pm drop.
@@ -70,7 +83,15 @@ export function haveScoresDropped(): boolean {
 // Returns the Mon–Sun date range for a given week (0 = current week, 1 = last week, etc.)
 export function getWeekDateRange(weeksAgo: number = 0): { start: string; end: string; dates: string[] } {
   const now = new Date();
-  const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  // Get current EST date reliably across all platforms
+  const estDateStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+  const [y, mo, da] = estDateStr.split('-').map(Number);
+  const estNow = new Date(y, mo - 1, da);
 
   // Find Monday of current week
   const day = estNow.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
@@ -78,16 +99,15 @@ export function getWeekDateRange(weeksAgo: number = 0): { start: string; end: st
 
   const monday = new Date(estNow);
   monday.setDate(estNow.getDate() + diffToMonday - weeksAgo * 7);
-  monday.setHours(0, 0, 0, 0);
 
   const dates: string[] = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
-    const y = d.getFullYear();
+    const yr = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
-    dates.push(`${y}-${m}-${dd}`);
+    dates.push(`${yr}-${m}-${dd}`);
   }
 
   return { start: dates[0], end: dates[6], dates };
@@ -96,25 +116,27 @@ export function getWeekDateRange(weeksAgo: number = 0): { start: string; end: st
 // Countdown to next 12pm EST (next quiz drop / score release)
 export function getNextQuizCountdown(): string {
   const now = new Date();
-  // Get "now" in EST
-  const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  const estHour = estNow.getHours();
+  // Get EST hour/minute/second reliably across all platforms
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+    hour12: false,
+  }).formatToParts(now);
 
-  // Target: today 12pm EST if before noon, otherwise tomorrow 12pm EST
-  let targetEST = new Date(estNow);
+  const estHour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+  const estMin = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
+  const estSec = parseInt(parts.find(p => p.type === 'second')?.value ?? '0', 10);
 
-  if (estHour < 12) {
-    targetEST.setHours(12, 0, 0, 0);
-  } else {
-    targetEST.setDate(targetEST.getDate() + 1);
-    targetEST.setHours(12, 0, 0, 0);
-  }
+  // Seconds until next 12pm EST
+  const nowSeconds = estHour * 3600 + estMin * 60 + estSec;
+  const targetSeconds = 12 * 3600;
+  let diff = targetSeconds - nowSeconds;
+  if (diff <= 0) diff += 24 * 3600; // already past noon, count to tomorrow noon
 
-  const diff = targetEST.getTime() - estNow.getTime();
-  if (diff <= 0) return '00:00:00';
-
-  const h = Math.floor(diff / 3600000).toString().padStart(2, '0');
-  const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, '0');
-  const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
+  const h = Math.floor(diff / 3600).toString().padStart(2, '0');
+  const m = Math.floor((diff % 3600) / 60).toString().padStart(2, '0');
+  const s = (diff % 60).toString().padStart(2, '0');
   return `${h}:${m}:${s}`;
 }

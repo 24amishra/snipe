@@ -3,9 +3,11 @@ import { View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../../lib/firebase';
 import SnipeWordmark from '../../components/SnipeWordmark';
 import { useGoogleAuth } from '../../lib/googleAuth';
-import { createUserProfile, getUserProfile } from '../../lib/firestore';
+import { createUserProfile, checkUsernameAvailable } from '../../lib/firestore';
 
 export default function Signup() {
   const router = useRouter();
@@ -43,10 +45,6 @@ export default function Signup() {
     setLoading(true);
 
     try {
-      const { createUserWithEmailAndPassword } = await import('firebase/auth');
-      const { auth } = await import('../../lib/firebase');
-      const { createUserProfile, checkUsernameAvailable } = await import('../../lib/firestore');
-
       // Check username uniqueness
       const available = await checkUsernameAvailable(username.trim());
       if (!available) {
@@ -65,8 +63,7 @@ export default function Signup() {
       } else if (e?.code === 'auth/weak-password') {
         setError('Password must be at least 6 characters');
       } else {
-        // Mock auth fallback
-        await redirectAfterAuth();
+        setError(e?.message || 'Sign up failed');
       }
     } finally {
       setLoading(false);

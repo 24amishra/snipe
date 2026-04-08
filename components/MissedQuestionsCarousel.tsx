@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { View, Text, ScrollView, Dimensions, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import type { MissedQuestion } from '../lib/firestore';
 
-const TIME_PER_QUESTION = 10;
+const TIME_PER_QUESTION = 8;
 
 interface Props {
   missedQuestions: MissedQuestion[];

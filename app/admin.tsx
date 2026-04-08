@@ -35,12 +35,19 @@ function friendlyDate(dateStr: string): string {
 
 export default function AdminScreen() {
   const router = useRouter();
+  const [authorized, setAuthorized] = useState(false);
 
-  // Gate: redirect non-admin users
+  // Gate: verify admin custom claim, redirect non-admins
   useEffect(() => {
-    if (auth.currentUser?.email !== 'admin@gmail.com') {
-      router.replace('/(tabs)');
+    async function checkAdmin() {
+      const tokenResult = await auth.currentUser?.getIdTokenResult();
+      if (tokenResult?.claims?.admin === true) {
+        setAuthorized(true);
+      } else {
+        router.replace('/(tabs)');
+      }
     }
+    checkAdmin();
   }, []);
 
   // Date state — default to next game day (the one after the currently live day)
@@ -179,8 +186,12 @@ export default function AdminScreen() {
     ? bankQuestions.filter((q) => q.category === filterCategory)
     : bankQuestions;
 
-  if (auth.currentUser?.email !== 'admin@gmail.com') {
-    return null;
+  if (!authorized) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#000000', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#FFFFFF" />
+      </SafeAreaView>
+    );
   }
 
   return (

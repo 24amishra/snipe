@@ -7,7 +7,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import StatCard from '../../components/StatCard';
-import { cancelAllNotifications, requestNotificationPermissions, scheduleDailyPlayReminder } from '../../lib/notifications';
+import { cancelAllNotifications, requestNotificationPermissions, scheduleDailyNotification } from '../../lib/notifications';
 import { getUserProfile, updateUsername, checkUsernameAvailable, getWeeklyStats, getTodayMissedQuestions, type UserProfile, type WeeklyStats, type MissedQuestion } from '../../lib/firestore';
 import MissedQuestionsCarousel from '../../components/MissedQuestionsCarousel';
 import { auth } from '../../lib/firebase';
@@ -25,6 +25,7 @@ export default function AccountTab() {
   const [usernameSaving, setUsernameSaving] = useState(false);
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStats | null>(null);
   const [missedQuestions, setMissedQuestions] = useState<MissedQuestion[] | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const opacity = useSharedValue(0);
 
   const displayUsername = profile?.username ?? '';
@@ -53,6 +54,11 @@ export default function AccountTab() {
           const missed = await getTodayMissedQuestions(uid);
           if (!cancelled) {
             setMissedQuestions(missed);
+          }
+          // Check admin custom claim
+          const tokenResult = await auth.currentUser?.getIdTokenResult();
+          if (!cancelled && tokenResult?.claims?.admin === true) {
+            setIsAdmin(true);
           }
         }
       } catch (e) {
@@ -97,7 +103,7 @@ export default function AccountTab() {
     await AsyncStorage.setItem('snipe_notifications_enabled', value.toString());
     if (value) {
       await requestNotificationPermissions();
-      await scheduleDailyPlayReminder();
+      await scheduleDailyNotification();
     } else {
       await cancelAllNotifications();
     }
@@ -447,7 +453,8 @@ export default function AccountTab() {
           <ChevronRight color="#444444" size={20} />
         </Pressable>
 
-        {auth.currentUser?.email === 'admin@gmail.com' && (
+
+        {isAdmin && (
           <Pressable
             onPress={() => router.push('/admin')}
             style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16 }}

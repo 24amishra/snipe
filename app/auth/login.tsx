@@ -3,6 +3,8 @@ import { View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../../lib/firebase';
 import SnipeWordmark from '../../components/SnipeWordmark';
 import { useGoogleAuth } from '../../lib/googleAuth';
 
@@ -33,8 +35,6 @@ export default function Login() {
     }
     setError('');
     try {
-      const { sendPasswordResetEmail } = await import('firebase/auth');
-      const { auth } = await import('../../lib/firebase');
       await sendPasswordResetEmail(auth, email);
       setResetSent(true);
     } catch (e: any) {
@@ -53,8 +53,6 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const { signInWithEmailAndPassword } = await import('firebase/auth');
-      const { auth } = await import('../../lib/firebase');
       await signInWithEmailAndPassword(auth, email, password);
       await redirectAfterAuth();
     } catch (e: any) {
