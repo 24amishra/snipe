@@ -1,0 +1,792 @@
+snipe: a group chat trivia competition. each day, the trivia game asks each gc member 5 of the same questions (10 seconds to answer) on random trivia questions. highest score wins, and they get a daily champ trophy.  each day brings a new champion, with leaderboards for gcs visible. will sit inside of messages like game pigeonMar 27Reading frontend design skillReading frontend design skillClaude's response was interruptedRetrythoughts on thisMar 27This is a really solid concept! Here are my thoughts:
+What works well
+The core loop is super compelling — daily trivia with a 10-second timer creates genuine tension, and the "same questions for everyone" mechanic makes it feel fair and competitive. Tying it to group chats is smart because the social pressure already exists there. Game Pigeon proved that mini-games live and die by their distribution, and iMessage is the perfect Trojan horse.
+The "snipe" framing
+The name is great — it implies precision, speed, and one-upping someone. That's exactly the feeling you want. It should feel like you're sniping the daily crown from your friends.
+Things worth thinking through
+The 10-second timer is the heart of the game — you'll want to nail the question reveal UX. Does the clock start when the question appears? Is there a countdown animation? That moment needs to feel electric.
+Timing coordination is a design challenge. Do all GC members have to play within the same window (e.g., 9am–midnight)? Or do you see your friends' scores only after you've answered, to prevent anchoring? The latter feels more competitive and prevents people from just not playing if they see they can't win.
+Cheating/lookups — 10 seconds mostly solves this, but you might want random question ordering so people can't coordinate.
+Score breakdown — speed bonus on top of correctness? So two people who both get 4/5 right are separated by how fast they answered. Adds another layer.
+Monetization / virality angle — does the champ trophy do anything? A streak system ("3-day champ") or seasonal leaderboards could drive retention hard.
+The big question — is this a standalone app, or are you actually pitching Apple/Android for iMessage/Messages integration? That's the make-or-break distribution question. A standalone app version could work too (like a group trivia club app), but the Game Pigeon comparison sets a high bar.
+What stage are you at — early concept, or are you building this out?just an app thinking cud build a prototype for friends.Mar 27That's a great scope — a prototype for a friend group is the perfect way to validate it. You can cut a lot of complexity and just build what makes it fun.
+For a prototype, you probably only need:
+
+A daily trivia round (5 questions, 10s timer)
+A shared leaderboard for your group
+Daily champ display
+Some way to identify players (even just entering a name is fine)
+
+Easiest stack to actually ship it:
+
+React Native or just a React web app (PWA) your friends can open on their phones — no App Store needed for a prototype
+Supabase or Firebase for the shared leaderboard and storing daily results in real time
+A free trivia API like Open Trivia DB (opentdb.com) for questions so you don't have to write any
+
+What to cut for now:
+
+Group chat integration (that's the hard part — just have everyone join a "room")
+Push notifications
+Complex scoring (just correct answers for now, add speed bonus later)
+
+You could honestly have something playable in a weekend. The core loop — answer 5 questions, see where you rank — is not that much code.
+Want me to build out a prototype of the UI/game flow you could actually play with? Could do it as a web app your friends just open on their phones via a link.what would be hard about gc integrationMar 27Great question. The "sits inside Messages like Game Pigeon" part is actually the hardest technical problem by far.
+Why Game Pigeon can do it
+Apple gave them access to the iMessage App Extension API — it's a special entitlement you have to apply for. You build a mini app that lives inside the Messages app drawer. It's not public like a normal App Store submission, Apple vets who gets this. Google has something similar for RCS but it's even more fragmented.
+The walls you'd hit
+iMessage extensions can only send/receive specific message "payloads" — you can't just push live game state back and forth freely. Game Pigeon works around this by essentially passing turn data as a message attachment. For a real-time 10-second timer trivia game, that architecture gets really messy — you need a live server anyway, so the "inside Messages" part becomes more cosmetic than functional.
+Android is worse — there's no equivalent of iMessage extensions at all on the OS level.
+What you'd actually have to do
+
+Apply to Apple's developer program for iMessage extension entitlements
+Build a separate iMessage app target alongside your main app
+Handle deep linking so tapping a message opens the right game room
+Still maintain a backend for the actual game logic
+
+The honest shortcut
+Most apps that feel like "GC games" just send a share link — tap it, opens the app, drops you into the room. It's 90% of the experience with 10% of the complexity. Even Wordle's social moment was just copy-pasting results into a GC manually, and that was enough.
+For a prototype, a shareable room link is the move. Save the Messages integration for if it actually takes off.my idea: host creates a group on the app. sends to a gc, users join via actual apple app. at 12 each day, the daily trivia opens up for 8 hours. 5 questions, 10 seconds, variety of pop culture, hisotry,current events. at the end suer submits. the next day(midnight) leaderboards drop with correctness + speed calculations for that day. total leaderboard is also visible and indiviudal user stats are accesible for user with speed recrodings for which categoires are best for them. very minimal ui ux, black background , white text. thoughts?Mar 27This is really well thought out. The decisions you've made are all the right ones.
+The 12pm–8pm window is smart
+It creates a shared daily ritual without pressure. Everyone plays on their lunch break or after work, and the window is wide enough to not feel punishing. Midnight leaderboard drop is a great touch — it turns checking your phone at midnight into a little event.
+Midnight reveal is genius actually
+Hiding results until the next day means you can't sandbag, you can't see your friend got 5/5 and just not play. You submit blind. That's more competitive and way more fun for trash talk after the reveal.
+The speed + correctness scoring is the right call
+It separates ties and rewards people who actually know things vs. lucky guessers. Just make sure the formula feels intuitive — something like base points per correct answer + time remaining as a bonus, so it's legible when you look at your score.
+Category stats per user is a sleeper feature
+That's the thing people will actually obsess over. "I'm fast on pop culture but bad at history" — that's identity. That drives people to keep playing to improve their weaknesses or flex their strengths.
+Minimal black/white UI is the right call for a prototype
+It'll look intentional rather than unfinished. Keeps you from getting lost in design decisions.
+Only things worth flagging
+The current events category is the one that needs work — you'll need a source that updates daily and is reliably factual. Open Trivia DB won't cut it for that category specifically. You might want to either cut it for v1 or pull from a curated news API.
+Question variety across 5 questions is important — if all 5 are history one day people will complain. You'll want to ensure each round pulls from at least 3 different categories.
+Overall — this is prototype-ready as described. The scope is tight, the mechanics are sound, and the social loop is real. Want me to build out a clickable prototype of the UI?im gonna manually input trivia qs at first, like wordle doesMar 27Perfect call. Wordle ran on a hardcoded word list for a long time and nobody cared — the game was the thing.
+This also gives you some really nice advantages:
+Quality control
+You pick the questions, so you know they're good, fair, and actually debatable in a GC. No weird Open Trivia DB questions that are either too obscure or poorly worded.
+You can theme days
+Super Bowl week gets sports questions. Oscar season gets film. A friend's birthday, you sneak in questions about them. That kind of curation is something an API can never do and it'll make it feel alive.
+Current events becomes easy
+You're the editor. You just write 5 questions Sunday night for the week, or day-of. No API dependency.
+The Wordle comparison is apt in another way too
+Josh Wardle built Wordle for his girlfriend first. It was a spreadsheet of words. It went viral anyway because the mechanic was good. Same energy here.
+Practical for your prototype:
+Just a simple JSON file or a Supabase table with date, question, 4 options, correct answer, category. You add rows manually. Done.
+When it actually takes off and you have 50 groups playing, then you think about automating question sourcing. For now manual curation is a feature, not a limitation.
+Want me to build the prototype UI now?nah still thinking about some more defining featuresMar 27Take your time, thinking it through now saves you rebuilding later.
+What's on your mind — anything specific you're going back and forth on?i want to build a react native app but prototype on just web. options?Mar 27A few solid paths:
+React Native Web
+Write React Native components once, they render on both web and native. react-native-web is what Expo uses under the hood. This is probably your best bet because your prototype code carries over almost directly to the real app with minimal rewriting.
+Expo
+Builds on top of React Native Web — you get web, iOS, and Android from one codebase. Has a "run in browser" mode out of the box. Easiest starting point, great for prototyping, and when you're ready to ship the actual app you're already most of the way there. This is probably the move.
+Just React (Vite)
+Fastest to get something on screen, but you'd be throwing away the code when you go native. Fine if you just want to validate the UI feel, but given you already know you want React Native, it's an extra step.
+My take
+Go Expo. Start with npx create-expo-app, run it in the browser with npx expo start --web, share a link with your friends via something like Vercel or Netlify for free. When you're ready to go native, you're already there. The gap between Expo web prototype and real app is much smaller than starting in plain React.
+The only caveat is some animations and native-feeling gestures are harder to get right on web with Expo, but for a trivia game that's not really a concern.
+Are you comfortable with React already or starting relatively fresh?is expo react like regular react? very little experience with react native but lot of next js/reactMar 27Very transferable. You'll feel at home fast.
+What's the same
+
+JSX, hooks, state, props — identical
+Component thinking is the same
+Libraries like Zustand, React Query, etc. all work
+
+What's different
+No HTML elements. Instead of divs and spans you use React Native primitives:
+jsx// React/Next.js
+<div style={{ flex: 1 }}>
+  <p>Hello</p>
+</div>
+
+// React Native / Expo
+<View style={{ flex: 1 }}>
+  <Text>Hello</Text>
+</View>
+So div → View, p/span → Text, img → Image, button → TouchableOpacity or Pressable. That's most of the mental shift right there.
+Styling
+No CSS files. Styles are JavaScript objects via StyleSheet.create(), or you can use NativeWind which is basically Tailwind for React Native. Given your Next.js background, NativeWind will feel very familiar.
+No Next.js router
+Expo has its own file-based router now (expo-router) that's actually very similar to the Next.js App Router. Same folder/file convention, same [id] dynamic routes. You'll recognize it immediately.
+Honest take
+Your Next.js experience is probably 80% of what you need. The learning curve is the primitives and styling — not the React fundamentals. You could be productive in Expo within a day.
+NativeWind + Expo Router would make it feel the most like home for you.anything like this in the market rn?Mar 27Searched the webSearched the webThe short answer: nothing quite like this exists. Here's the landscape:
+What's out there
+Wikitrivia is probably the closest — it's a daily trivia app with private leagues where you compete against friends, weekly matchups, and per-subject stats. App Store But it's more of a slow, thoughtful trivia experience — no 10-second timer, no daily champ energy, not built around a friend group's GC dynamic.
+Crossover Games has daily challenges with friend leaderboards and one-tap emoji-style result sharing for group chat bragging rights App Store — but it's sports-only (NBA, NFL, etc.) and leans Wordle/Connections style, not timed trivia.
+Everything else — Kahoot, Crowdpurr, Water Cooler Trivia — is built for corporate team building or hosted events. Completely different vibe, different audience.
+The gap Snipe fills
+None of them have the combination you're describing: private friend groups, same questions for everyone, timed pressure, blind results until midnight, and individual stat tracking. The closest cultural analog is still Wordle — shared experience, daily ritual, GC conversation starter — but nobody has done that with competitive timed trivia in a friend-group context.
+The "Game Pigeon but trivia" framing is actually the white space. Game Pigeon has 8-ball, basketball, etc. but nothing with daily persistence, leaderboards, or streaks. You're essentially combining the Wordle social loop with Game Pigeon's native-feeling competition, and that combination doesn't exist yet.
+That's a good sign for building it.alright to get us started, i want to write a comphrensive prompt for a claude agen to help me get a prototype running. i have a very specific vision for this in my head so i will provide you with the scope, style, and techniques, an you output a prompt designed for claude code to run.Mar 27Let's get everything out of your head first so the prompt is tight and complete.Claude's response was interruptedRetry[User dismissed — do not proceed, wait for next instruction]Mar 27Whenever you're ready, just walk me through your vision — scope, style, tech stack, whatever you have in mind — and I'll turn it into a tight Claude Code prompt.Open up app. Login page/sign up for an account
+Snipe should be written. Ui/ux is all  black background with white text. The font should look like uber’s logo. After user logs in, they should have three dashboards: today’s question, account details, and leaderboards. Same background, same font. Extremely minimal. If the usr has not played today’s game, the main dashboard should have a button that says play. If they have, they have a timer that showcases countdown until their scores release. 
+On this page, they should have an option to create and join new groups via buttons in the top right corner.On the leaderboard page, keep it same theme with a table showcasing the leaderboard for their GC/groups. Have a new table for each group along with total daily wins, streaks, and overall percentage scores for each category. Keep this like a scrollable table. The UI should feel like Offsuit,poker game. Image attached, but keep the leaderboard scrollable and separate for each game. On the third page, have all account details (settings, user things logout) also have detailed stats for the user. Mainly, for the five categories of questions, their accuracy and average time spent. More points for faster questions. Now, in regards to game mechanics, when the user clicks play game, redirect to a popup that says ready to begin(black background) green colored button with that text. As soon s the user clicks yes, the popup goes away. In the background od the pop up should be five rectangular component skeletons, one longer one at the top for the questions, and four equal sized ones below set up like traditional trivia. words should just appear after clicking begin (2 seconds latency wait on the skeleton) timer starts immedietely. Each time the user answers, the timer resets at the top, and the question plus answer choices swipe to the left replaced by the new questions with a swift animation. Once 7 questions have been answered, the game ends and the countdown begins on this page. Users should sees a x/7 at the top displaying their progress. Users should be given no indication if their answer was right or not. The emphasis is on speed, casual gameplay, and usability in under 1 minute (lunch break, study hall). Most of their time should be spent on leaderboards or statsShow moreMar 27This is a really clear vision. Let me turn this into a comprehensive Claude Code prompt.Claude Code prompt for Snipe prototypeClaude Code prompt for Snipe prototypeClaude's response was interruptedRetryuse firebase for authentaction and expo for all other ui/ux things. i will add keys later, for now replace with skelaton code for easy io on my endMar 27Got it. Let me write the full prompt now.Created 2 files, ran a command, read a fileCreated 2 files, ran a command, read a fileThat's your full Claude Code prompt. A few things to know when you run it:
+How to use it: Open Claude Code in your terminal, paste the entire contents of this file as your first message, and let it run. It'll generate all 22 files in order.
+After it finishes: The only things you'll need to do manually are drop your Firebase config into lib/firebase.ts when you're ready, and run the dependency install commands at the bottom of the prompt.
+One heads up: Claude Code will occasionally ask clarifying questions mid-build. For anything UI-related, just say "follow the prompt spec." For any dependency conflicts, tell it to use the latest compatible version.
+The whole prototype should be fully navigable — auth through game over — without a single Firebase key.Snipe claude code promptDocument · MD Downloadany key misses that i missed on my initial run?Mar 27A few things worth flagging that weren't in your initial vision but will matter when you actually run the prototype:
+Functional gaps
+The game screen doesn't account for what happens if a user force-quits mid-game and reopens the app. Right now there's no session state — they'd just start over. Fine for a prototype but worth a // TODO comment so you remember.
+The invite code system for joining groups has no generation logic specified. You'll need to decide if it's a random 6-character code, the group ID itself, or something else. The prompt skeletons it but Claude Code will likely just make something up here.
+No loading states between screens — if Firebase is live and a query is slow, the user sees nothing. Worth adding a skeleton pulse on the leaderboard and account tabs specifically since those are the most data-heavy.
+Design gaps
+You mentioned the Offsuit aesthetic but the leaderboard prompt doesn't specify what happens on mobile when usernames are long — rows could break badly. Worth adding a numberOfLines={1} truncation rule.
+The group pills on the Today tab have no empty state — what does a new user with no groups see? Probably just the PLAY button with no pills, but Claude Code might render something weird.
+No spec for what the tab bar looks like when you're inside the game screen. Since it's a full-screen modal it should hide the tab bar entirely — the prompt implies this but doesn't explicitly say it.
+Game mechanic gap
+You said 5 questions in earlier conversations but the prompt specifies 7. Worth picking one and being consistent before you run it — mock data has 7, the UI copy says "7 questions · 10 seconds each" — just make sure that's intentional.
+The biggest miss
+There's no push notification skeleton at all. You mentioned the midnight leaderboard drop as a key feature — that's only exciting if people get notified. Even a fake toggle in settings with a // TODO: Expo Notifications comment would set you up well for later.add expo notifications to the spec. in addition, if a user leaves the game haflway through, have them leave off where they ended but one question over(meaning whatever question they already seen si wrong). cap usernames to 12 characters, also add skelatons everywhere for loadingMar 27Edited 9 files, viewed a file, read a fileEdited 9 files, viewed a file, read a fileUpdated. Here's a summary of everything that changed:
+Expo Notifications — full lib/notifications.ts skeleton with four functions: permission request, midnight score drop alert, daily 12pm play reminder, and cancel-all on logout. The Account settings notifications toggle is now a real functional Switch backed by AsyncStorage, not a dummy skeleton.
+Mid-game exit/resume — when a user leaves mid-game, the current question is marked wrong, session is saved to AsyncStorage with today's date. On next PLAY tap, it detects the saved session and shows a resume prompt with a "CONTINUE" or "START OVER" option. Session clears on game completion.
+12-character username cap — enforced at the TextInput level with maxLength={12}, a live 6/12 character counter, and the same cap applied to the Edit Username modal in Account settings.
+Skeletons everywhere — full spec for skeleton states on every screen: Today tab, Leaderboard, Account, and the game screen background. 1200ms simulated load delay on all data tabs, fade-in transition when real content appears. No spinners anywhere.
+AsyncStorage added to dependencies for session and notification toggle persistence.Snipe claude code promptDocument · MD Downloadno start over option, users should not be able to see same qusetions againMar 27Clean fix.Edited 2 files, read a fileEdited 2 files, read a fileDone. Start Over is gone, and there's now an explicit rule in the final section that questions are strictly one-way — the session index only ever moves forward, never back. Once you've seen a question, it's gone for the day regardless of what the user does.Snipe claude code promptDocument · MD Downloadif oyu are the owner of a group, when clicked, you should have the option to remove member 
+  and invite members on the leaderboard view. the invite feature should involve a link        
+  that, when clicked on, the user  joins the group.   (like a link sent into messages). can you walk me through how this would work.Mar 28Great feature. Let me walk you through how both parts work before we add it to the prompt.
+Group ownership
+When a user creates a group, their userId gets stored as the ownerId on the group document in Firestore. Whenever the leaderboard renders a group, it checks if the current user's userId matches ownerId. If yes, they see the owner controls. If no, they just see the regular leaderboard table. Simple flag, no extra role system needed.
+Remove member
+On the leaderboard view, if you're the owner, each row has a small X or trash icon on the right side. Tapping it triggers a confirmation (a simple bottom sheet or inline prompt — "Remove jordan from The Guys?") and if confirmed, removes that userId from the group's members array in Firestore. The row disappears from the leaderboard. That's it.
+Invite via link — this is the interesting one
+This is called deep linking and it's how every "join via link" flow works. Here's the chain:
+When the owner taps Invite, your app generates a unique invite link that looks like snipe://join?groupId=g1&code=ABC123. The code is a short random string stored on the group document in Firestore as inviteCode. You share this link into a group chat via the native iOS/Android share sheet — one tap, sends to Messages, WhatsApp, wherever.
+When the recipient taps the link on their phone, one of two things happens. If they have the app installed, the OS hands the deep link directly to your Expo app, which reads the groupId and code parameters, verifies the code against Firestore, and adds the user to the group's members array. If they don't have the app installed, you'd need a fallback URL — typically a web page that says "download Snipe to join" with an App Store link. For a prototype you can skip the fallback and just handle the case where the app is installed.
+Expo Router handles the deep link reading natively since you already have a scheme: "snipe" in app.json. You'd add a route like app/join.tsx that fires on snipe://join and handles the join logic automatically.
+For the prototype specifically
+Instead of a real snipe:// deep link (which requires a built app, not a web prototype), you'd generate a shareable URL like https://snipe.app/join?groupId=g1&code=ABC123 and use Share.share() from React Native to send it. The join route in Expo Router would handle it when someone opens the link. You skeleton the Firestore write with a mock success state and a // TODO comment.
+The invite code itself
+Generate it on group creation — a random 6-character alphanumeric string like "X9KP2M". Store it on the group document. It's permanent unless the owner regenerates it (a "reset invite link" button is a nice-to-have for later). Anyone with the code can join, so the code is the auth — no approval flow needed for v1.
+Want me to add all of this to the prompt now?make a seperate prompt hereMar 28Created a file, read a fileCreated a file, read a fileDone. A few things worth knowing about this prompt:
+Run this after the first prompt, not alongside it. It explicitly tells Claude Code not to rebuild anything — just layer these features on top.
+The /join route as a public route is an important detail that's easy to miss. If the auth gate in _layout.tsx redirects unauthenticated users away from everything, someone tapping an invite link while not logged in would just get bounced to the login screen with no context. The prompt tells Claude Code to whitelist /join so the join screen always renders first, then handles auth state from there.
+The invite link for the prototype uses Share.share() which on a real device opens the native share sheet directly into Messages, WhatsApp, etc. On web it'll just copy to clipboard — which is fine for demoing.Snipe group ownership promptDocument · MD Downloadhow else can i drive usage everydayMar 29Good question to be thinking about now before you build more. Retention mechanics are easier to wire in early than to bolt on later.
+The stuff that actually works
+Streaks are the most proven daily driver in mobile — Duolingo built an entire business on streak anxiety. You already have the data for it. The key is making the streak feel losable. A notification at 7pm that says "Your 5-day streak dies in an hour" is more effective than a morning reminder. The fear of losing something you have beats the excitement of gaining something you don't.
+Group dynamics are your biggest natural advantage over every other trivia app. People don't open Wordle because Wordle is fun — they open it because their group chat is talking about it. Lean into that. A push notification that says "jordan just played — you're up" when a group member completes their game creates direct social pressure. That's a much stronger pull than a generic daily reminder.
+Specific mechanics worth considering
+A weekly reset alongside the all-time leaderboard. All-time boards get stale fast once someone pulls ahead — weekly gives everyone a fresh shot at the crown every Monday and restores competitive tension.
+A "perfect game" distinction. If someone answers all 7 correctly, mark it on the leaderboard with a small indicator. It's a status symbol that drives people to replay mentally even if they can't replay literally.
+Category of the day. Instead of random mix every day, one category gets double points. Announced at midnight with the new game. Creates conversation — "oh it's a sports day, jordan's cooked."
+Rival system. Show each user who they're closest to on the leaderboard and highlight that person specifically. "You're 40 points behind alex" is more motivating than a full table of 8 people.
+The midnight drop is already your best mechanic
+The delayed score reveal is genuinely the strongest thing in your design. It creates a daily event. The question is whether you're extracting full value from it. Right now it's just a countdown. Consider making the leaderboard reveal animated — scores populating one by one, rank changes animating. Make it feel like a sports final score dropping. That's the moment people will share screenshots of.
+What I'd prioritize
+In order: streaks with a streak-death notification, the "member just played" social push, and weekly resets. Those three alone would meaningfully move daily opens. Everything else is nice to have.
+Want me to write a prompt for any of these?for the algo speed check, how can i weight faster inputs with a multiplier? ideasMar 29A few directions depending on how you want it to feel:
+Option 1: Linear decay (what you have now)
+Points scale evenly with time remaining. Answer in 1 second, get max bonus. Answer in 9 seconds, get almost nothing. Simple, predictable, but doesn't reward the truly fast answers enough — someone who answers in 2 seconds gets almost the same as someone who answers in 8.
+Option 2: Exponential decay
+The bonus drops off steeply as time passes. Answering in the first 3 seconds gives you most of the bonus, then it falls off a cliff. This is where it gets interesting — it creates a genuine "snap answer" reward tier that separates the fast from the medium.
+tsconst speedBonus = Math.floor(50 * Math.pow(timeRemaining / 10, 2));
+// 1s left:  50 * (1/10)² = 0.5 pts
+// 5s left:  50 * (5/10)² = 12.5 pts
+// 9s left:  50 * (9/10)² = 40.5 pts
+Option 3: Tiered brackets
+Forget the continuous curve entirely. Define hard speed tiers — snap, fast, normal, slow. Each tier pays a flat multiplier on top of the base 100 points. Clean, legible, easy to communicate to users.
+ts// 0–3 seconds elapsed  → 1.5x  (150 pts)
+// 3–6 seconds elapsed  → 1.25x (125 pts)
+// 6–9 seconds elapsed  → 1.0x  (100 pts)
+// timeout/no answer    → 0x    (0 pts)
+This is my personal recommendation for Snipe. Here's why — players can actually feel and understand the tiers. After a few games they know "if I answer before the bar hits halfway I get the big bonus." That mental model drives faster play behavior, which is exactly what you want. The continuous curves are invisible to the user — they never know if they got 34 or 38 bonus points. The bracket system makes the speed reward feel real and learnable.
+Option 4: Multiplier on the full question value, not just bonus
+Instead of base + bonus, multiply the whole question score. This amplifies the gap between fast and slow correct answers more dramatically.
+ts// answered in < 3s  → 150 pts  (1.5x)
+// answered in 3–6s  → 100 pts  (1.0x)
+// answered in 6–10s → 75 pts   (0.75x)
+// wrong/timeout     → 0 pts
+The downside here is that slow-but-correct answers get penalized below the "base" score which can feel punishing. Depends on how competitive you want the feel.
+Option 5: Streak multiplier across questions
+This is a different angle entirely — reward consecutive fast answers, not just individual ones. Answer 3 questions in a row under 4 seconds and your multiplier climbs. Miss a fast answer and it resets. Creates a risk/reward dynamic mid-game where someone might rush a question they're unsure about to keep the multiplier alive.
+ts// 1 fast answer streak  → 1.0x
+// 2 consecutive         → 1.1x
+// 3 consecutive         → 1.25x
+// 4+ consecutive        → 1.5x
+This would make the game feel much more dynamic and create genuine tension. The downside is it's harder to explain and adds complexity to the score calculation.
+My actual recommendation for your prototype
+Go with Option 3 (tiered brackets) for the base scoring — it's the most communicable and behaviorally effective. Then consider adding Option 5 (streak multiplier) as a layer on top once the core is working. Those two together would create a scoring system that's simple to understand but has real depth. Fast snap answers on a streak would feel genuinely rewarding in a way that a continuous curve never could.
+Want me to write the updated gameUtils.ts spec for whichever you pick?push to a github git remote add origin https://github.com/24amishra/snipe.gitMar 29I can't push to GitHub directly from here — Claude Code is the right tool for that. But here's exactly what to run once Claude Code has generated your project files:
+bashcd snipe
+
+git init
+git add .
+git commit -m "initial prototype — snipe daily trivia app"
+git branch -M main
+git remote add origin https://github.com/24amishra/snipe.git
+git push -u origin main
+If Claude Code already initialized a git repo during the build (it sometimes does), skip the git init and just run from git add . onwards.
+One thing to do first — make sure you have a .gitignore before you push. You don't want to accidentally commit node_modules or any local env files.Claude's response was interruptedRetryi jave a repo and want to push it to github, just initialized an emoty direcotry on github,. howMar 29bashgit init
+git add .
+git commit -m "initial commit"
+git branch -M main
+git remote add origin https://github.com/24amishra/snipe.git
+git push -u origin main
+Run those in order from inside your project folder. If you hit a permissions error on the push, GitHub needs you to authenticate — easiest way is to use a personal access token. Go to GitHub → Settings → Developer Settings → Personal Access Tokens → Generate new token, give it repo access, then when git prompts for a password paste the token in.agastyamishra@agastyas-MacBook-Air-2 snipe % git add .
+fatal: not a git repository (or any of the parent directories): .gitMar 29You skipped git init. Run all of them in order:
+bashgit init
+git add .
+git commit -m "initial commit"
+git branch -M main
+git remote add origin https://github.com/24amishra/snipe.git
+git push -u origin mainipe % git add .
+error: 'snipe/' does not have a commit checked out
+fatal: adding files failed
+agastyamishra@agastyas-MacBook-Air-2 snipe %Mar 29You have a nested snipe/ folder inside your snipe/ project. Git is choking on it. Run this first:
+bashls
+If you see a snipe/ folder sitting inside your current directory, that's the problem — your actual project is one level too deep. Either:
+Option A — move into the inner folder:
+bashcd snipe
+git init
+git add .
+git commit -m "initial commit"
+git branch -M main
+git remote add origin https://github.com/24amishra/snipe.git
+git push -u origin main
+Option B — delete the nested folder if it's empty:
+bashrm -rf snipe/
+git add .
+git commit -m "initial commit"
+git branch -M main
+git remote add origin https://github.com/24amishra/snipe.git
+git push -u origin main
+Run ls first so you can see what you're dealing with before doing either.deplpyed on vercel, error; 404: NOT_FOUNDCode: NOT_FOUNDMar 29This is a common Expo + Vercel issue. Vercel doesn't know it's serving an Expo web app out of the box. A few things to check:
+Most likely cause — wrong root directory
+Vercel is probably looking at the outer folder, not where your actual Expo project lives. In your Vercel project settings:
+Go to Settings → General → Root Directory and set it to snipe if your repo has that nested structure you saw earlier.
+Second likely cause — no build output config
+Vercel doesn't know where Expo puts its web build. Create a vercel.json in your project root:
+json{
+  "buildCommand": "npx expo export --platform web",
+  "outputDirectory": "dist",
+  "framework": null
+}
+Third — make sure web output is enabled
+In your app.json confirm you have:
+json{
+  "expo": {
+    "web": {
+      "output": "static",
+      "bundler": "metro"
+    }
+  }
+}
+The full fix in order:
+
+Add the vercel.json above to your project root
+Set "web": { "output": "static" } in app.json
+In Vercel dashboard, set root directory to wherever your package.json lives
+Redeploy
+
+What does your repo structure look like at the top level? That'll tell us which of these is the culprit.right now, the link to the join my group does not auto join the clicking user to the group.rather prompts them to create    
+  an ccount  . how can i go about implementing this deep linking featureMar 29This is a classic deep link + auth flow problem. The link works, but your app loses the join context the moment it redirects to login. Here's what's happening and how to fix it.
+The problem
+When someone taps the invite link, Expo Router opens /join?groupId=g1&code=X9KP2M. But since the user isn't logged in, your auth gate in _layout.tsx immediately redirects them to /auth/login — and the groupId and code params get lost in that redirect. By the time they finish signing up, the app has no idea they were trying to join a group.
+The fix — persist the intent before redirecting
+You need to save the join intent to AsyncStorage before the auth gate kicks in, then read and action it after login/signup completes.
+Here's the flow:
+Step 1 — Save intent in /join before redirecting
+In app/join.tsx, before doing anything else, check if the user is logged in. If they're not, save the pending join to AsyncStorage and then redirect to login:
+tsimport AsyncStorage from '@react-native-async-storage/async-storage';
+
+// At the top of your useEffect in join.tsx
+const user = auth.currentUser; // TODO: real Firebase auth check
+
+if (!user) {
+  // Save the intent before redirecting to auth
+  await AsyncStorage.setItem('snipe_pending_join', JSON.stringify({ groupId, code }));
+  router.replace('/auth/login');
+  return;
+}
+
+// If logged in, proceed with join logic as normal
+Step 2 — Check for pending join after login/signup
+At the end of your login and signup success handlers in app/auth/login.tsx and app/auth/signup.tsx, after navigating to tabs, check for a saved pending join:
+ts// After successful auth, before navigating away
+const pending = await AsyncStorage.getItem('snipe_pending_join');
+
+if (pending) {
+  const { groupId, code } = JSON.parse(pending);
+  await AsyncStorage.removeItem('snipe_pending_join'); // clear it immediately
+  router.replace(`/join?groupId=${groupId}&code=${code}`); // send them back to join
+} else {
+  router.replace('/(tabs)/'); // normal login flow
+}
+Step 3 — Handle the new user case on signup
+For new users specifically, you also want to make sure the account is fully created in Firestore before the join fires. Add a small delay or await your user creation logic before the redirect back to /join.
+The full user journey then becomes:
+
+Friend taps invite link → /join?groupId=g1&code=X9KP2M
+Not logged in → intent saved to AsyncStorage → redirected to /auth/login
+User logs in or creates account
+Auth success handler reads pending join → redirects back to /join?groupId=g1&code=X9KP2M
+This time they're authenticated → join executes → success screen → leaderboard
+
+One edge case to handle
+If the user takes too long to sign up and comes back a day later, the pending join is still in AsyncStorage. Add an expiry timestamp to the saved intent:
+tsawait AsyncStorage.setItem('snipe_pending_join', JSON.stringify({ 
+  groupId, 
+  code,
+  savedAt: Date.now()
+}));
+
+// When reading it back:
+const { groupId, code, savedAt } = JSON.parse(pending);
+const isExpired = Date.now() - savedAt > 1000 * 60 * 60 * 24; // 24 hours
+if (isExpired) {
+  await AsyncStorage.removeItem('snipe_pending_join');
+  router.replace('/(tabs)/');
+  return;
+}
+Want me to write this up as a Claude Code prompt you can run directly?what are some things i can do to rate limit the app?Mar 29Good thing to think about early. Rate limiting protects you from abuse, runaway costs, and people trying to game the leaderboard. Here's the full picture for Snipe specifically:
+Firebase level (free, do this first)
+Firebase Security Rules are your first line of defense. You can restrict who can read and write what without any backend code:
+js// Only authenticated users can read/write
+// Users can only write to their own documents
+// Groups can only be written by their owner
+Firebase also has built-in App Check — it verifies that requests are coming from your actual app binary, not someone hitting your Firestore directly from curl or Postman. Free to enable, massive protection against API abuse.
+Game integrity (most important for Snipe)
+The biggest exploit specific to your app is someone submitting impossible scores — answering 7 questions in 2 seconds total, or submitting a perfect score repeatedly. A few ways to close this:
+Server-side score validation is the real fix. Instead of the client calculating and submitting a final score, the client submits a timestamped answer log — each answer with when it was received relative to when the question was shown. Your backend (a Firebase Cloud Function) then recalculates the score server-side and rejects anything that's physically impossible. Someone who "answered" in 0.3 seconds gets flagged.
+ts// Client submits this, not a final score
+{
+  questionId: 'q3',
+  answeredAt: 1711234567891,  // unix ms
+  questionShownAt: 1711234561234,
+  answer: 'Taylor Swift'
+}
+One game per day per user is enforced at the Firestore write level — before accepting a submission, the Cloud Function checks if a result already exists for that userId + date combination. If it does, reject it.
+API / Firestore level
+Cloud Functions rate limiting — if you have any callable functions (score submission, group creation, joining), wrap them with a simple counter in Firestore or Firebase's built-in rate limiting. Something like: max 5 group creations per user per day, max 1 score submission per user per day.
+Firestore document-level timestamps — on every write, store a lastActionAt timestamp. Before allowing another write of the same type, check if enough time has passed.
+Account level
+Limit group creation to something reasonable — 5 groups per user is plenty. Enforced via a Cloud Function that counts the user's existing groups before creating a new one.
+Invite code single-use option — right now your invite codes are permanent. You could make them expire after 24 hours or after N uses, which limits someone from mass-inviting bots to inflate their group's leaderboard.
+Username changes — cap at once every 30 days. Store lastUsernameChangeAt on the user document.
+Client side (lightweight deterrents)
+Disable the answer buttons for the first 300ms after a question appears. Makes it physically impossible to register an answer before a human could have read the question. Simple, effective, zero backend needed.
+Lock the game screen — if the app goes to background mid-game and comes back, the current question counts as wrong (you already have this with the exit mechanic). This also prevents someone from googling answers mid-game.
+**What IClaude's response was interruptedRetryin my app any other potential bad acting risks before dpeloyment?Mar 29Good to audit this before you ship. Here's everything specific to Snipe's architecture worth locking down:
+Score manipulation
+The biggest one. Right now your client calculates the score and presumably submits it. Anyone who knows basic React Native debugging or uses a proxy tool like Charles can intercept that network request and submit an arbitrary score. Even for a friend group prototype this will happen — someone will figure it out and post a 1050 every day.
+Fix: move score calculation entirely to a Firebase Cloud Function. Client submits raw answer log, server scores it.
+Invite code enumeration
+Your invite codes are 6-character alphanumeric. Someone could brute force valid codes by rapidly trying combinations and joining groups they weren't invited to. Low risk for a friend group but worth noting.
+Fix: rate limit join attempts per IP/user (3 failed attempts = cooldown), and add App Check so only your real app binary can make requests.
+Account farming
+Nothing stops someone from creating 5 fake accounts, playing the daily game on all of them, and submitting the best score under their real username. Particularly exploitable if you ever add any kind of prize or status to winning.
+Fix: device fingerprinting (Expo has libraries for this), and flagging multiple accounts from the same device. For now, one account per email is your only guard.
+Group leaderboard stuffing
+A user creates a group, invites fake accounts they control, those accounts submit 0-point scores every day, making the real user look like they win every day. Inflates win streaks and daily champ counts.
+Fix: minimum group size for leaderboard display (e.g. 3 real active players), and flagging accounts that consistently score 0.
+Stale invite links
+Your invite links are permanent right now. If someone posts their group's invite link publicly (tweets it, puts it in a bio), anyone can join that group forever. For a private friend group app that's a real problem.
+Fix: expiring invite links (24–48 hours), or a max members cap per group that the owner sets.
+No email verification
+Right now someone can sign up with a fake email like asdf@asdf.com and have a full account. This makes account farming trivial and means you have no way to contact users or recover accounts.
+Fix: Firebase has one-line email verification — sendEmailVerificationLink() on signup. Block gameplay until verified, or at minimum block leaderboard visibility.
+Notification token exposure
+When you store Expo push tokens in Firestore to send notifications, if your Firestore rules aren't tight, anyone authenticated could read other users' push tokens and send them arbitrary notifications outside your app.
+Fix: push tokens should only be readable by the server (Cloud Functions), never by other client users. Lock that document path down in Security Rules.
+The /join route is public
+You correctly made /join bypass auth so unauthenticated users can land there. But that also means it's the one unauthenticated surface in your app. Make sure it only does one thing — validate a code and redirect. No data should be readable from that route without auth completing first.
+Client-side owner check
+Right now you're checking group.ownerId === MOCK_CURRENT_USER_ID on the client to show the remove member and invite buttons. That's fine for UI, but the actual remove member action needs to be validated server-side too. Otherwise someone can call removeMember() directly with any groupId and userId they want, bypassing the UI check entirely.
+Fix: in your Cloud Function for removing members, verify that the requesting user's uid matches the group's ownerId before executing the removal.
+What to prioritize before deployment
+In order: email verification, server-side score validation, Firestore Security Rules, and App Check. Those four close the most meaningful gaps. Everything else is hardening you can do post-launch once you see how real users behave.what's this section: Snipe is a speed-based trivia game designed to be played with groups and GCs. join a group, play the daily snipe, and compare your stats with your friends to compete, broken down by category. new games drop everyday at 8PM EST.Mar 29Sounds like an app store description or an onboarding screen. Which one are you going for?this trivia gameMar 29Got it — that's your app's tagline/description. It's solid but a few small things worth tightening:
+Current:
+
+Snipe is a speed-based trivia game designed to be played with groups and GCs. join a group, play the daily snipe, and compare your stats with your friends to compete, broken down by category. new games drop everyday at 8PM EST.
+
+Issues
+
+"designed to be played with groups and GCs" — redundant, GCs are groups
+"play the daily snipe" — slightly awkward, "snipe" as a noun is unclear to a new user
+"broken down by category" — tacked on, loses the flow
+Inconsistent capitalization — some sentences start lowercase
+"everyday" should be "every day"
+
+Tightened version:
+
+Snipe is a daily speed trivia game for your group chat. answer 7 questions in 10 seconds each, then wait for the leaderboard to drop at midnight. fastest fingers win.
+
+Or if you want it punchier and more brand-forward:
+
+seven questions. ten seconds each. one daily champion. play with your group chat — scores drop at midnight.
+
+Or minimal, almost tagline-only:
+
+daily trivia. brutal speed. one winner per group.
+
+The midnight drop is your most distinctive mechanic and the current description doesn't mention it at all — that's the thing worth leading with. Which direction feels right to you?Snipe is a speed-based trivia game designed to be played with groups. seven questions, ten seconds each. one daily champion. scores drop everyday at 8PM EST. want to mention the statsMar 29
+Snipe is a speed-based trivia game designed to be played with your group chat. seven questions, ten seconds each. one daily champion. track your accuracy and speed across five categories — scores drop every day at 8PM EST.
+ideas to growApr 1Growth for Snipe is almost entirely social by nature — the product already has the right mechanics, it's about surface area and distribution.
+Lowest effort, highest leverage
+The score reveal at 8PM is your biggest organic moment. If you make the leaderboard results shareable as a graphic — like a clean black card with the day's rankings, crown next to the winner, category breakdown — people will post it. That one screenshot in a group chat is worth more than any ad. Wordle grew entirely on that mechanic.
+Referral through group creation is already built in. Every time someone creates a group and sends an invite link, that's an organic acquisition. Make sure the invite link preview (Open Graph meta tags) looks good when pasted into iMessage or Instagram — a clean black card with "you've been invited to [group name] on Snipe" does a lot of work.
+Medium term
+College campuses are your best early market. Trivia culture, group chats, competitive friend groups, lots of time in dining halls and study halls. One group of 8 friends at a school who love it will spread it to three other friend groups within a week. Find 10 campuses, find one person on each who gets it, give them a reason to share it — even just a "founding member" badge or streak protection.
+Themed weeks drive re-engagement. Super Bowl week is all sports questions. Oscar season is all film. March Madness. The Met Gala. These are natural cultural moments where people already want to talk about the topic — you just give them a competitive frame.
+Streaks with social visibility. If your streak is visible on the leaderboard next to your name, losing it becomes a public event. People will open the app just to protect a number others can see.
+Longer term
+Bracket tournaments. March Madness style, groups of friends compete in elimination rounds over a week. One-off event format, creates urgency, very shareable.
+Public groups alongside private ones. Right now it's only friend groups. A public "NBA fans" group or "NYU students" group gives people without a ready-made friend group a reason to download. It also creates discovery — you can browse and join public groups, which is its own acquisition channel.
+Creator/influencer groups. A sports podcast, a pop culture newsletter, a Twitch streamer creates a Snipe group for their audience. They share the invite link, their followers join, suddenly you have a distribution channel with built-in trust. The product already supports this — it just needs the right people to try it.
+The honest truth about growth at this stage
+You have maybe 20–30 people in your friend network who will try anything you build. Get it in their hands first, watch how they actually use it, see which moments make them pull out their phone and show someone else. That behavior — the spontaneous show-someone-else moment — is the only signal worth optimizing for right now. Everything else is premature.what other metrcis could be interesitng to show the userApr 2Given Snipe's mechanics, the most interesting metrics are the ones that create identity and fuel trash talk — stats that make you want to either brag or improve.
+Competitive metrics
+
+Head-to-head record against specific group members — "you're 8-3 against alex this month." That's the most personal and most likely to drive daily opens.
+Best score ever and what day it was — people remember their best game
+Podium rate — percentage of days you finished top 3, not just days you won. Softens the leaderboard for people who never win but are consistently close
+Comeback stat — how many times you were losing mid-leaderboard and finished first. Requires knowing question order which you already track
+
+Speed metrics
+
+Fastest single answer ever, and which category it was in
+Average speed by time of day — "you're 1.2 seconds faster when you play before noon." Genuinely interesting behavioral insight
+Clutch rate — percentage of correct answers made in the last 3 seconds of the timer. Shows who performs under pressure
+
+Consistency metrics
+
+Current streak and longest streak ever, side by side
+Days played out of days available — a simple attendance percentage. "Played 24 of 30 days this month"
+Perfect game count — all 7 correct. Rare enough to feel like an achievement
+
+Category identity
+You already have accuracy and avg time per category. A few additions that make it more interesting:
+
+Best category vs worst category gap — "you're 35% better at pop culture than science"
+Category rank within your group — "you're the #1 sports player in The Guys"
+Most improved category over last 30 days
+
+The one I'd prioritize
+Head-to-head records against group members. It's the most personal stat in the app and the one most likely to generate conversation in the actual group chat — which is exactly where you want Snipe to be talked about.weekly stats?Apr 2Yeah, weekly is the right cadence for Snipe — daily is too granular to see trends, all-time gets stale. A weekly summary gives people a reason to open the app even on days they forgot to play.
+Core weekly stats
+
+Games played that week out of 7
+Average score for the week
+Best single game score and which day
+Weekly rank within each group — separate from all-time, resets every Monday
+Questions correct out of total attempted (e.g. 41/49)
+Average answer speed for the week vs previous week — "0.8s faster than last week" is the kind of thing people screenshot
+
+The weekly recap notification
+Sunday night or Monday morning, push a notification that functions like a weekly report card. Something like:
+
+"your week: 6/7 games played · avg score 820 · #2 in The Guys · your best category was Sports"
+
+That single notification recaps their week, reminds them of their standing, and primes them for the new week. It's the highest value notification you can send and the one least likely to get turned off.
+Weekly MVP
+Each group has a weekly champion — whoever had the highest cumulative score across all 7 days. Different from daily champ. Gives consistent players an advantage over someone who just had one great game. Show it on the leaderboard with a small weekly crown or "W" badge next to the name.
+Week over week comparison
+The most motivating format is showing change, not just absolute numbers:
+
+Score: 820 avg (+65 from last week) ↑
+Speed: 4.1s avg (-0.3s from last week) ↑
+Rank in group: #2 (was #3 last week) ↑
+
+Arrows and deltas make people feel momentum. Even a small improvement feels rewarding when it's surfaced explicitly.
+Where to surface it
+A dedicated weekly summary screen that appears automatically when you open the app on Monday before you've played that day. Full black screen, clean data layout, your week at a glance. Dismissable with a swipe, then goes to the normal Today tab. Also accessible from the Account tab under a "This Week" section anytime.
+Want me to spec this out as a Claude Code prompt?any other potential featuresApr 2Here's everything worth considering, roughly ordered by how much they'd move the needle:
+High impact
+Reactions after the leaderboard drops. Once scores are visible, group members can react to each other's results — a small set of fixed emojis (👑 🔥 💀 😭) that appear on someone's score row. No comments, just reactions. Keeps it fast and in-app but creates the same energy as a group chat responding to results. This is the closest you get to iMessage integration without actually building it.
+Challenges. A user can challenge a specific group member to a head-to-head — same questions, compared directly. Separate from the daily game. Creates bilateral competition beyond the group leaderboard and gives people something to do on days they've already played.
+Snipe of the week. One question per week that's harder than normal, worth double points, announced in advance. Creates anticipation and a shared talking point. "Did you get the snipe question?" becomes a thing.
+Guest mode. Someone gets an invite link but doesn't want to make an account. Let them play the daily game as a guest and see where they would have ranked — but don't save their score to the leaderboard. Lowers the barrier to trying the app massively. Convert them after they see they would have won.
+Medium impact
+Question of the day history. A scrollable archive of every past daily question set with the correct answers revealed. After scores drop you can go back and see what the right answers were. People will use this to argue about questions in the group chat.
+Group chat bot. A simple bot that posts the leaderboard results directly into a group chat at 8PM — works with iMessage via a share automation, or natively in WhatsApp and Telegram which have open APIs. Brings the results to where the conversation already is instead of requiring people to open the app.
+Difficulty ratings. After the game, users can rate how hard today's questions felt — a simple 1-5. Aggregate it. Show "today's difficulty: hard" on the Today tab before people play. Sets expectations and adds a meta layer to the competition.
+Custom question rounds. Group owners can submit a set of custom questions for a special round — about the group itself, about a shared trip, an inside joke. Plays once a month. Massively increases emotional investment because the content is personal.
+Longer term
+Seasons. Resets everything every 30 days. New season, new leaderboard, everyone starts at zero. Creates recurring urgency and gives people who were losing a reason to keep playing. End of season shows your final rank and a summary card.
+Achievements. Unlockable badges that appear on your profile — "answered 100 questions," "7-day streak," "perfect game," "dethroned the champ." Not a points system, just identity markers. People will grind for these.
+Spectator mode. After you've played, you can watch a replay of how the questions looked with the timer running — see which ones tripped people up, how fast the champ answered each one. Pure entertainment for the post-game window when you're waiting for scores.
+Live group mode. Once a week, a scheduled time where everyone in the group plays simultaneously and can see a live indicator that someone else is playing right now. Not their answers, just presence. Creates synchronous energy in an otherwise async product.
+The ones I'd actually build next
+Reactions and question history are the two that cost the least to build and add the most to the post-game experience — which is where your users are spending most of their time anyway since the game itself is under a minute. Those two features make the 8PM score drop a genuine event rather than just a number appearing.trying to deploy to the app store. what steps do i have to take on ios to complete thisApr 3Here's the full iOS path from prototype to App Store.
+What you need before anything
+
+Apple Developer Account — $99/year at developer.apple.com. You need this before you can do anything else. Takes 24-48 hours to activate.
+A Mac with Xcode installed — required for building and submitting iOS apps
+An Expo account at expo.dev — free, needed for EAS Build
+
+Step 1 — Configure your app identity
+In app.json, make sure you have:
+json{
+  "expo": {
+    "name": "Snipe",
+    "slug": "snipe",
+    "version": "1.0.0",
+    "ios": {
+      "bundleIdentifier": "com.yourname.snipe",
+      "buildNumber": "1"
+    }
+  }
+}
+The bundleIdentifier is permanent and unique — once you submit with it you can't change it. Pick something like com.agastya.snipe and commit to it.
+Step 2 — Set up EAS Build
+EAS (Expo Application Services) builds your app in the cloud so you don't have to manage Xcode configurations manually. It's the right move for an Expo app.
+bashnpm install -g eas-cli
+eas login
+eas build:configure
+This creates an eas.json file in your project. It'll look like:
+json{
+  "build": {
+    "production": {
+      "ios": {
+        "simulator": false
+      }
+    }
+  }
+}
+Step 3 — Set up your App Store Connect listing
+Go to appstoreconnect.apple.com and:
+
+Create a new app
+Select iOS
+Enter your app name: "Snipe"
+Select your bundle ID (matches what's in app.json)
+Set your SKU (any unique string, e.g. snipe-001)
+
+You'll also need to fill out:
+
+App description (your tagline copy is ready for this)
+Keywords
+Support URL (even a simple landing page works)
+Privacy policy URL (required — you need one)
+Age rating questionnaire
+Screenshots — Apple requires specific sizes. For iPhone: 6.9" display (1320x2868px). You'll need at least 3.
+
+Step 4 — Certificates and provisioning
+This is the part that trips most people up. EAS handles most of it automatically:
+basheas credentials
+It'll walk you through creating:
+
+A distribution certificate (proves the app is from you)
+A provisioning profile (links your app ID to your developer account)
+
+Let EAS manage these automatically when prompted — it's much easier than doing it manually in Xcode.
+Step 5 — Build for production
+basheas build --platform ios --profile production
+This uploads your code to Expo's build servers and compiles a .ipa file. Takes about 15-20 minutes. You'll get a link to download it when done.
+Step 6 — Submit to App Store
+basheas submit --platform ios
+EAS will upload the .ipa directly to App Store Connect. You can also do this manually with Transporter (free Mac app from Apple) if you prefer.
+Step 7 — App Review
+Once submitted, Apple reviews your app. First submission typically takes 1-3 days. They'll check:
+
+App actually works as described
+Privacy policy is present and accurate
+No placeholder content or lorem ipsum
+Push notifications have a clear purpose explained
+Login/account creation has a "Sign in with Apple" option if you offer any other social login — since you're using email only you're fine
+
+Common rejection reasons to get ahead of
+
+No guest mode or way to see the app without creating an account — Apple pushes back on this sometimes. Your guest mode idea is actually worth building for this reason alone.
+Push notifications — you need to explain in your App Store description and review notes exactly what notifications you send and why
+The app crashes on review — test thoroughly on a real device before submitting, not just the simulator
+Missing privacy manifest — newer Expo SDK versions handle this but double check your app.json has a privacyManifests section
+
+Practical timeline
+
+Developer account approval: 1-2 days
+EAS setup + first build: half a day
+App Store Connect listing + screenshots: 1 day
+Apple review: 1-3 days
+
+Realistically you're looking at about a week from starting this process to being live, assuming no rejections.
+One thing to do right now
+Before any of this, test your app on a real iPhone using Expo Go or a development build. Things that work in the web prototype often break on a real device — especially deep links, notifications, and AsyncStorage timing. Better to find those issues before Apple's reviewers do.is there a way to circulate this as an app with all functioanltiu without pushing to app storeApr 3Yes, a few good options depending on who you're sharing with.
+Easiest — Expo Go
+Share your project's Expo URL and anyone with the Expo Go app installed can open it instantly. No build needed, no Apple involved.
+bashnpx expo start
+Sends them a QR code or a link like exp://u.expo.dev/.... They scan it, app opens. The catch is they need Expo Go installed, and some native features like push notifications and deep links don't work inside Expo Go.
+Best option for full functionality — TestFlight
+This is Apple's official beta distribution platform and it's free. You get all native features working — notifications, deep links, everything — without going through App Store review. You can invite up to 10,000 external testers via email.
+The process:
+basheas build --platform ios --profile production
+eas submit --platform ios
+Then in App Store Connect, go to TestFlight, add your testers' emails, they get an invite, download TestFlight app, and install Snipe from there. Takes about 15 minutes of Apple review for TestFlight (much faster than full App Store review).
+This is genuinely the move for your use case — full app, real device, no App Store listing needed, and you can have your whole friend group on it within a day.
+No Apple account at all — development build via EAS
+If you don't have a developer account yet, you can still distribute to specific devices using EAS internal distribution:
+basheas build --platform ios --profile preview
+This generates a .ipa you can share directly. Recipients install it by opening the link on their iPhone and trusting your certificate in Settings. Limited to devices you've registered but works for a small test group.
+For Android — much easier
+Android lets you install APKs directly without any store or developer account:
+basheas build --platform android --profile production
+Share the .apk link, recipients enable "install from unknown sources" in settings, done. Full functionality, no review process.
+My recommendation for right now
+TestFlight. It's the closest to the real app experience, supports everything you've built, and is exactly what it's designed for — getting an app to a group of real users before the App Store. Set up the $99 developer account, do one EAS build, submit to TestFlight, and you can have your friends playing the real native app within 48 hours.can the QR code above to open in Expo Go.
+› Choose an app to open your project at
+http://172.28.255.83:8081/_expo/loading
+› Metro: exp://172.28.255.83:8081
+› Web: http://localhost:8081
+› Using Expo Go (Press s to switch to development build)
+› Press ? │ show all commands
+› Using Expo Go
+› Press s │ switch to development build
+› Press a │ open Android
+› shift+a │ select an Android device or emulator
+› Press i │ open iOS simulator
+› shift+i │ select an iOS simulator
+› Press w │ open web
+› Press r │ reload app
+› Press j │ open debugger
+› Press m │ toggle menu
+› shift+m │ more tools
+› Press o │ open project code in your editor
+› Press c │ show project QR
+ if i click on the link http://172.28.255.83:8081/_expo/loading or qr code, heres the result: {"error":"CommandError: Must specify \"expo-platform\" header or \"platform\" query parameter"}Show moreApr 5That error means you're hitting the Metro server URL directly in a browser instead of through the Expo Go app. The URL exp://172.28.255.83:8081 is not meant to be opened in a browser — it only works inside Expo Go.
+To open on your iPhone:
+
+Make sure your iPhone is on the same WiFi network as your Mac
+Open the Expo Go app on your iPhone (download from App Store if you haven't)
+Press c in your terminal to show the QR code
+In Expo Go, tap "Scan QR code" and scan it
+
+That's it — the app will load on your phone.
+If the QR code still doesn't work
+The 172.28.x.x IP range looks like it might be a WSL or VM network, not your real local IP. Your phone can't reach that address if it's not on the same network segment.
+Check your real local IP:
+bashipconfig getifaddr en0
+If that gives a different IP like 192.168.x.x, force Expo to use it:
+bashnpx expo start --host lan
+Or manually:
+bashnpx expo start --host 192.168.x.x
+If you're on different networks entirely (phone on cellular, Mac on WiFi), use tunnel mode:
+bashnpx expo start --tunnel
+This routes through Expo's servers so local network doesn't matter. Slower but works from anywhere.on the xpo go app,no button to scan qr code.Apr 5Which version of Expo Go do you have? On newer versions the scan button moved.
+Try these:
+On iPhone — don't use the Expo Go app's scanner at all. Just open your iPhone's native Camera app, point it at the QR code in your terminal, and tap the banner that appears at the top. It'll open directly in Expo Go.
+If that doesn't work — in your terminal press c to display the QR code, then manually type the exp:// URL into Expo Go:
+
+Open Expo Go
+Look for a text field or "Enter URL manually" option
+Type exp://172.28.255.83:8081
+
+If you still don't see a way in — your Expo Go home screen should have a section called "Recently opened" or a "+ " button somewhere. Can you describe what you see when you open the app? That'll help narrow it down.the dev sever sohows up but it is not clickableApr 5That's a known Expo Go bug on newer versions. A few things to try:
+Option 1 — force tunnel mode
+bashnpx expo start --tunnel
+This generates a new exp:// URL that Expo Go handles differently and the clickable link usually works.
+Option 2 — open from terminal directly
+Press i in your terminal to push it directly to an iOS simulator on your Mac instead of dealing with Expo Go on device.
+Option 3 — use the camera app
+Press c in terminal to show the QR code, then scan it with your iPhone's native camera app (not Expo Go). Tap the notification banner at the top of the screen. Should open Expo Go automatically.
+Option 4 — update Expo Go
+Go to the App Store, search Expo Go, and make sure it's fully updated. The unclickable dev server bug was patched in a recent version.
+Option 5 — switch to a development build
+Press s in your terminal to switch to development build mode. This bypasses Expo Go entirely and gives you more reliable device testing. You'd run:
+basheas build --platform ios --profile development
+Then install that build on your phone directly.
+Which Mac are you on — are you running an iOS simulator through Xcode? That's honestly the fastest way to test right now while you sort out the Expo Go connection. Press i in your terminal and it should spin up immediately.its 9 extra gb of overheadApr 5Yeah Xcode is brutal for that. Avoid it for now.
+Quickest fix — just use the web version
+Press w in your terminal. Opens instantly in your browser at http://localhost:8081. Not a perfect native experience but you can click through every screen, test the game flow, and show people the prototype without any of the device setup headache.
+For actual phone testing without Xcode
+Try this — on your iPhone open Safari and go to:
+http://172.28.255.83:8081
+If your phone and Mac are on the same WiFi it'll load the web version of your Expo app directly in Safari. Feels much closer to a real app than a desktop browser.
+The tunnel trick is still your best bet for Expo Go
+bashnpx expo start --tunnel
+This has the highest success rate for getting Expo Go to connect without being on the same network or dealing with IP issues. Let it run, wait for a new QR code to appear, scan with your iPhone camera app. Should just work.
+Honest recommendation for right now
+Use the web version locally to keep building and testing. When you're ready to put it on your actual phone for real, do one TestFlight build — it's less hassle than fighting Expo Go and you get the full native experience anyway.how to updae an app to newest form on app storeApr 5Straightforward process — just bump your version number and rebuild.
+Step 1 — update version in app.json
+json{
+  "expo": {
+    "version": "1.0.1",
+    "ios": {
+      "buildNumber": "2"
+    }
+  }
+}
+version is what users see in the App Store (e.g. 1.0.1). buildNumber must increment by at least 1 every submission — Apple rejects duplicate build numbers. So if you submitted with buildNumber: "1" before, it must be "2" now or higher.
+Step 2 — build
+basheas build --platform ios --profile production
+Wait ~15-20 minutes for the build to complete.
+Step 3 — submit
+basheas submit --platform ios
+EAS uploads it directly to App Store Connect.
+Step 4 — App Store Connect
+Go to appstoreconnect.apple.com:
+
+Your new build will appear under the app
+Claude's response was interruptedRetryin app store, apple on mobile for expo go unrelated to codeApr 5Go to the App Store on your iPhone, search Expo Go, tap your profile icon top right on the App Store home screen, scroll down to see pending updates, and update it there.
+Or just go directly: App Store → search "Expo Go" → if there's an update the button will say Update instead of Open.project is incompatibel with this version. project requries newer version of expo go. but nothing is hsowing up when i go to app storeApr 5This means your expo SDK version in package.json is newer than what's on your Expo Go.
+Check what SDK your project is using:
+bashcat package.json | grep expo
+If you're on SDK 51+ Expo Go on the App Store may lag behind. A few fixes:
+Option 1 — force update Expo Go
+Sometimes the App Store doesn't show the update in the pending list. Go directly:
+
+App Store → search "Expo Go" → tap it → if it says "Open" you're already on latest
+Try closing App Store fully and reopening
+
+Option 2 — downgrade your Expo SDK to match
+bashnpx expo install expo@~50.0.0
+Option 3 — check your SDK version and match it
+bashnpx expo --version
+Then go to expo.dev/go to see which SDK version the current Expo Go app supports and align your project to that.
+Option 4 — just use tunnel + web for now
+bashnpx expo start --web
+And test in browser while you sort this out.
+Honest fix — this version mismatch is one of the reasons TestFlight is cleaner. A development build via EAS doesn't depend on Expo Go at all and you control exactly what's on your phone. Worth just doing that rather than fighting SDK versions.
+What does your package.json show for the expo version?for test flight need apple dev right? will take some time for my purchae to go throughApr 5Yes, TestFlight requires the $99 Apple Developer account. While that processes, here are your best options right now:
+Best option while you wait — ngrok tunnel
+This gives you a public URL your phone can open in Safari, no Expo Go needed:
+bashnpm install -g ngrok
+npx expo start --web
+# in a separate terminal:
+ngrok http 8081
+Ngrok gives you a URL like https://abc123.ngrok.io — open that in Safari on your iPhone. Feels like a real app, fully clickable, shareable with friends to demo.
+Second option — Expo Go via SDK downgrade
+If you want native feel right now, downgrade your project to match the App Store version of Expo Go:
+bashnpx expo install expo@~51.0.0
+Check expo.dev/go for exactly which SDK the current Expo Go supports and match it.
+For sharing with friends while you wait
+The web build deployed on Vercel is actually fine for demoing. Send them the Vercel URL, have them open it in Safari on iPhone, and tap the share button → "Add to Home Screen." It'll sit on their home screen and open full screen like a real app — no browser chrome, no address bar. Not native but visually identical for a demo.
+Once your developer account clears, TestFlight is one command and everyone gets the real thing.been playing with friends for one week now, good engagement and feedack but think deployment will help build habits(notis )Apr 5That's a great sign — engagement in week one without notifications or a native install is hard to get. People are actually finding value in it.
+You're right that deployment unlocks the habit loop. Right now people have to actively remember to open a browser link. Once it's a real app with a push at noon saying "today's game is live" and another at 8PM when scores drop, the behavior becomes automatic. That's the difference between something people like and something people do every day.
+While your developer account processes
+A few things worth doing now so you're ready to move fast when it clears:
+Get your App Store Connect listing started. You can fill out the metadata — description, keywords, age rating, privacy policy — before you have a build ready to submit. Saves you a day when the time comes.
+Write your privacy policy now. Apple requires one and it needs a hosted URL. Use a generator like app-privacy-policy-generator.nisrulz.com — takes 10 minutes, host it as a simple page on your Vercel deployment.
+Collect the feedback you're getting. What are people saying specifically? First week feedback from real users is the most valuable data you'll have — worth writing down before it gets fuzzy. What do they ask for, what confuses them, what makes them come back.
+The habit loop you're about to unlock
+Noon notification → play in 60 seconds → forget about it → 8PM notification → scores drop → group chat explodes → repeat tomorrow.
+That full cycle doesn't exist yet without native notifications. Once it does your daily opens will look very different. What's the current engagement like — are people playing every day or more sporadic?i text them the first couple days but good palying from there.Apr 5That's actually the best possible signal. You had to manually trigger the first two days but after that the social pressure of the group took over — people were opening it because they didn't want to fall behind, not because you reminded them. That's organic retention and it's rare.
+It also tells you exactly what notifications need to replicate —Claude's response was interruptedRetryhow/should i frame this on a resumeApr 7Definitely put it on there. Building and shipping a real app with active users is more concrete than most portfolio projects. Here's how to frame it:
+As a project entry:
+
+Snipe — Full Stack Mobile Developer
+Built and deployed a daily speed trivia app for group chats with active weekly users. Designed and implemented real-time leaderboards, Firebase authentication, push notification retention systems, and deep link group invite flows. Built in Expo (React Native), Firebase, and deployed via TestFlight.
+
+A few principles for how you frame it:
+Lead with impact, not technology. "Active weekly users with organic retention" is more interesting to a recruiter than "built with Firebase." Technology is table stakes — the fact that people actually use it is the differentiator.
+Quantify where you can. Even small numbers are better than none. "12 active daily users, 85% day-7 retention" is concrete. Once you have a few weeks of data pull the real numbers.
+Tailor the framing to the role. For a frontend role, emphasize the animation system, design system, and component architecture. For a backend/fullstack role, emphasize Firebase security rules, score validation logic, and the notification infrastructure. For a product role, emphasize the retention mechanics, the midnight reveal design decision, and user feedback integration.
+The honest sell
+The most impressive thing about this project isn't the tech stack — it's that you identified a real gap in the market, built something in a reasonable timeframe, shipped it to real users, and got organic engagement without paid acquisition. That's a product instinct story and it's worth telling explicitly in interviews even if it's not on the resume itself.
+What kind of roles are you targeting?down load this whole convo as a text fiel12:44 AMI can't export or download conversations directly — that's a Claude.ai interface limitation on my end.
+But you can do it yourself easily:
+Option 1 — Claude.ai built in
+Click the share icon or the "..." menu on the conversation — some versions of Claude.ai have an export or copy option there.
+Option 2 — select all and copy
+
+Click anywhere in the conversation
+Cmd+A to select all
+Cmd+C to copy
+Paste into a Notes, Google Doc, or text editor and save
+
+Option 3 — print to PDF
+
+Cmd+P in your browser
+Change destination to "Save as PDF"
+Saves the entire conversation as a formatted PDF
+
+Option 3 — browser extension
+If you want a clean text file, an extension like "Save Page WE" for Chrome/Safari lets you save the page as plain text.
+The PDF option is probably your quickest move right now

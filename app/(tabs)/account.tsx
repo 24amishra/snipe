@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, Modal, TextInput, Switch } from 'react-native';
+import { View, Text, ScrollView, Pressable, Modal, TextInput, Switch, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -26,6 +26,10 @@ export default function AccountTab() {
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStats | null>(null);
   const [missedQuestions, setMissedQuestions] = useState<MissedQuestion[] | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showReauthModal, setShowReauthModal] = useState(false);
+  const [reauthPassword, setReauthPassword] = useState('');
+  const [reauthError, setReauthError] = useState('');
   const opacity = useSharedValue(0);
 
   const displayUsername = profile?.username ?? '';
@@ -120,6 +124,75 @@ export default function AccountTab() {
     }
     await cancelAllNotifications();
     router.replace('/auth/login');
+  };
+
+  const performAccountDeletion = async () => {
+    setDeleting(true);
+    try {
+      const { deleteUser } = await import('firebase/auth');
+      const { auth } = await import('../../lib/firebase');
+      const user = auth.currentUser;
+      if (user) {
+        await deleteUser(user);
+      }
+      await cancelAllNotifications();
+      router.replace('/auth/login');
+    } catch (e: any) {
+      if (e?.code === 'auth/requires-recent-login') {
+        setDeleting(false);
+        setReauthPassword('');
+        setReauthError('');
+        setShowReauthModal(true);
+      } else {
+        console.log('[SNIPE] Error deleting account:', e);
+        setDeleting(false);
+        Alert.alert('Error', 'Failed to delete account. Please try again.');
+      }
+    }
+  };
+
+  const handleReauthAndDelete = async () => {
+    if (!reauthPassword.trim()) {
+      setReauthError('Please enter your password');
+      return;
+    }
+    setDeleting(true);
+    setReauthError('');
+    try {
+      const { reauthenticateWithCredential, EmailAuthProvider, deleteUser } = await import('firebase/auth');
+      const { auth } = await import('../../lib/firebase');
+      const user = auth.currentUser;
+      if (!user || !user.email) throw new Error('No user');
+      const credential = EmailAuthProvider.credential(user.email, reauthPassword);
+      await reauthenticateWithCredential(user, credential);
+      await deleteUser(user);
+      setShowReauthModal(false);
+      await cancelAllNotifications();
+      router.replace('/auth/login');
+    } catch (e: any) {
+      setDeleting(false);
+      if (e?.code === 'auth/wrong-password' || e?.code === 'auth/invalid-credential') {
+        setReauthError('Incorrect password');
+      } else {
+        console.log('[SNIPE] Reauth delete error:', e);
+        setReauthError('Failed to delete account. Please try again.');
+      }
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you sure? This will permanently delete your account and all your data. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: performAccountDeletion,
+        },
+      ],
+    );
   };
 
   const fadeStyle = useAnimatedStyle(() => ({
@@ -464,7 +537,13 @@ export default function AccountTab() {
           </Pressable>
         )}
 
-        <Pressable onPress={handleLogout} style={{ paddingVertical: 16, marginTop: 8 }}>
+        <Pressable onPress={handleDeleteAccount} disabled={deleting} style={{ paddingVertical: 16, marginTop: 8, opacity: deleting ? 0.5 : 1 }}>
+          <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 16, color: '#EF4444' }}>
+            {deleting ? 'Deleting...' : 'Delete Account'}
+          </Text>
+        </Pressable>
+
+        <Pressable onPress={handleLogout} style={{ paddingVertical: 16 }}>
           <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 16, color: '#EF4444' }}>Log Out</Text>
         </Pressable>
 
@@ -584,6 +663,58 @@ export default function AccountTab() {
               }}
             >
               <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 16, color: '#000000' }}>Update Password</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Re-authenticate for Account Deletion Modal */}
+      <Modal visible={showReauthModal} transparent animationType="slide">
+        <Pressable onPress={() => { setShowReauthModal(false); setReauthError(''); }} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.7)' }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: '#111111', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 }}>
+            <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 20, color: '#FFFFFF', marginBottom: 8 }}>
+              Confirm Deletion
+            </Text>
+            <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#888888', marginBottom: 20 }}>
+              For security, please enter your password to delete your account.
+            </Text>
+            <TextInput
+              placeholder="Password"
+              placeholderTextColor="#888888"
+              value={reauthPassword}
+              onChangeText={setReauthPassword}
+              secureTextEntry
+              style={{
+                fontFamily: 'Urbanist_400Regular',
+                fontSize: 16,
+                color: '#FFFFFF',
+                borderWidth: 1,
+                borderColor: '#222222',
+                borderRadius: 16,
+                paddingHorizontal: 20,
+                paddingVertical: 16,
+                marginBottom: 16,
+              }}
+            />
+            {reauthError ? (
+              <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 13, color: '#EF4444', marginBottom: 12, marginLeft: 4 }}>
+                {reauthError}
+              </Text>
+            ) : null}
+            <Pressable
+              onPress={handleReauthAndDelete}
+              disabled={deleting}
+              style={{
+                backgroundColor: '#EF4444',
+                borderRadius: 16,
+                paddingVertical: 16,
+                alignItems: 'center',
+                opacity: deleting ? 0.5 : 1,
+              }}
+            >
+              <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 16, color: '#FFFFFF' }}>
+                {deleting ? 'Deleting...' : 'Delete My Account'}
+              </Text>
             </Pressable>
           </Pressable>
         </Pressable>
