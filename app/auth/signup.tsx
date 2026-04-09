@@ -3,7 +3,7 @@ import { View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, deleteUser } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import SnipeWordmark from '../../components/SnipeWordmark';
 import { useGoogleAuth } from '../../lib/googleAuth';
@@ -45,17 +45,27 @@ export default function Signup() {
     setLoading(true);
 
     try {
-      // Check username uniqueness
-      const available = await checkUsernameAvailable(username.trim());
-      if (!available) {
-        setError('Username is already taken');
-        setLoading(false);
-        return;
-      }
-
+      // Create auth user first so we're authenticated for Firestore queries
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await createUserProfile(cred.user.uid, username.trim(), email);
-      await redirectAfterAuth();
+
+      try {
+        // Now check username uniqueness (requires auth per Firestore rules)
+        const available = await checkUsernameAvailable(username.trim());
+        if (!available) {
+          // Roll back: delete the auth user since we can't create the profile
+          await deleteUser(cred.user);
+          setError('Username is already taken');
+          setLoading(false);
+          return;
+        }
+
+        await createUserProfile(cred.user.uid, username.trim(), email);
+        await redirectAfterAuth();
+      } catch (profileError) {
+        // Roll back auth user if profile creation fails
+        await deleteUser(cred.user).catch(() => {});
+        throw profileError;
+      }
     } catch (e: any) {
       console.log('[SNIPE] Signup error:', e?.message);
       if (e?.code === 'auth/email-already-in-use') {
