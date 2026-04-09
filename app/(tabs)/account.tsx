@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, Modal, TextInput, Switch, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, Modal, TextInput, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -27,6 +27,7 @@ export default function AccountTab() {
   const [missedQuestions, setMissedQuestions] = useState<MissedQuestion[] | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showReauthModal, setShowReauthModal] = useState(false);
   const [reauthPassword, setReauthPassword] = useState('');
   const [reauthError, setReauthError] = useState('');
@@ -146,7 +147,9 @@ export default function AccountTab() {
       } else {
         console.log('[SNIPE] Error deleting account:', e);
         setDeleting(false);
-        Alert.alert('Error', 'Failed to delete account. Please try again.');
+        setShowDeleteConfirm(false);
+        setReauthError('Failed to delete account. Please try again.');
+        setShowReauthModal(true);
       }
     }
   };
@@ -181,18 +184,7 @@ export default function AccountTab() {
   };
 
   const handleDeleteAccount = () => {
-    Alert.alert(
-      'Delete Account',
-      'Are you sure? This will permanently delete your account and all your data. This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: performAccountDeletion,
-        },
-      ],
-    );
+    setShowDeleteConfirm(true);
   };
 
   const fadeStyle = useAnimatedStyle(() => ({
@@ -663,6 +655,47 @@ export default function AccountTab() {
               }}
             >
               <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 16, color: '#000000' }}>Update Password</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Delete Account Confirmation Modal */}
+      <Modal visible={showDeleteConfirm} transparent animationType="fade">
+        <Pressable onPress={() => setShowDeleteConfirm(false)} style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)' }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: '#111111', borderRadius: 20, padding: 24, marginHorizontal: 32, width: '85%', maxWidth: 340 }}>
+            <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 20, color: '#FFFFFF', marginBottom: 12 }}>
+              Delete Account
+            </Text>
+            <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#888888', marginBottom: 24, lineHeight: 20 }}>
+              Are you sure? This will permanently delete your account and all your data. This action cannot be undone.
+            </Text>
+            <Pressable
+              onPress={() => {
+                setShowDeleteConfirm(false);
+                performAccountDeletion();
+              }}
+              style={{
+                backgroundColor: '#EF4444',
+                borderRadius: 16,
+                paddingVertical: 16,
+                alignItems: 'center',
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 16, color: '#FFFFFF' }}>Delete</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setShowDeleteConfirm(false)}
+              style={{
+                borderWidth: 1,
+                borderColor: '#333333',
+                borderRadius: 16,
+                paddingVertical: 16,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 16, color: '#FFFFFF' }}>Cancel</Text>
             </Pressable>
           </Pressable>
         </Pressable>
