@@ -519,7 +519,7 @@ export default function AccountTab() {
         </View>
 
         <Pressable
-          onPress={() => { /* skeleton no-op */ }}
+          onPress={() => router.push('/privacy')}
           style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16 }}
         >
           <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 16, color: '#FFFFFF' }}>Privacy Policy</Text>
