@@ -80,6 +80,7 @@ export default function LeaderboardTable({
         categoryStats: e.categoryStats,
         currentStreak: le?.currentStreak ?? 0,
         wins: le?.wins ?? 0,
+        gamesPlayed: le?.gamesPlayed ?? 0,
         didPlay: true,
       };
     });
@@ -94,6 +95,7 @@ export default function LeaderboardTable({
         categoryStats: {} as Record<string, { correct: number; total: number }>,
         currentStreak: e.currentStreak ?? 0,
         wins: e.wins ?? 0,
+        gamesPlayed: e.gamesPlayed ?? 0,
         didPlay: false,
       }));
 
@@ -111,6 +113,9 @@ export default function LeaderboardTable({
       } else if (sortCol === 'wins') {
         aVal = a.wins;
         bVal = b.wins;
+      } else if (sortCol === 'gamesPlayed') {
+        aVal = a.gamesPlayed;
+        bVal = b.gamesPlayed;
       } else {
         const aCat = a.categoryStats[sortCol];
         const bCat = b.categoryStats[sortCol];
@@ -140,6 +145,9 @@ export default function LeaderboardTable({
       } else if (sortCol === 'wins') {
         aVal = a.wins ?? 0;
         bVal = b.wins ?? 0;
+      } else if (sortCol === 'gamesPlayed') {
+        aVal = a.gamesPlayed ?? 0;
+        bVal = b.gamesPlayed ?? 0;
       } else {
         const aCat = a.categoryStats?.[sortCol];
         const bCat = b.categoryStats?.[sortCol];
@@ -415,6 +423,7 @@ export default function LeaderboardTable({
                 {renderSortHeader('Score', 'score', COL_WIDTH)}
                 {renderSortHeader('Avg', 'avg', COL_WIDTH)}
                 {renderSortHeader('Wins', 'wins', COL_WIDTH)}
+                {renderSortHeader('GP', 'gamesPlayed', COL_WIDTH)}
                 {CATEGORY_COLS.map((col) => renderSortHeader(col.label, col.key, COL_WIDTH))}
                 {renderSortHeader('Spd', 'avgSpeed', SPEED_COL_WIDTH)}
               </View>
@@ -499,6 +508,23 @@ export default function LeaderboardTable({
                             ? isTodayRow
                               ? (row as typeof todayRows[number]).wins
                               : ((row as LeaderboardEntry).wins ?? 0)
+                            : '\u2014'}
+                        </Text>
+                      </View>
+
+                      {/* Games Played */}
+                      <View style={{ width: COL_WIDTH, alignItems: 'center' }}>
+                        <Text
+                          style={{
+                            fontFamily: 'Urbanist_400Regular',
+                            fontSize: 12,
+                            color: didPlay && showStats ? '#AAAAAA' : '#444444',
+                          }}
+                        >
+                          {showStats
+                            ? isTodayRow
+                              ? '\u2014'
+                              : ((row as LeaderboardEntry).gamesPlayed ?? 0)
                             : '\u2014'}
                         </Text>
                       </View>

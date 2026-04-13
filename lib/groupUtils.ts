@@ -8,7 +8,6 @@ import {
   arrayRemove,
   increment,
 } from 'firebase/firestore';
-import { Platform } from 'react-native';
 import { db } from './firebase';
 import type { GroupDoc } from './firestore';
 
@@ -23,14 +22,12 @@ export async function getGroupDoc(groupId: string): Promise<(GroupDoc & { id: st
 
 /**
  * Build a shareable invite link for a group.
- * - On mobile: uses snipe:// deep link so the app opens directly
- * - On web: uses https URL so the browser handles it
+ * Always uses the https URL so the link works for everyone:
+ * - If the app is installed, iOS universal links / Android app links open the app
+ * - If not installed, the web page loads and they can join from there
  */
 export function buildInviteLink(groupId: string, inviteCode: string): string {
-  if (Platform.OS === 'web') {
-    return `https://snipe-psi.vercel.app/join?groupId=${groupId}&code=${inviteCode}`;
-  }
-  return `snipe://join?groupId=${groupId}&code=${inviteCode}`;
+  return `https://snipe-psi.vercel.app/join?groupId=${groupId}&code=${inviteCode}`;
 }
 
 /**

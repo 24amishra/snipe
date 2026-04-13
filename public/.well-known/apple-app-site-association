@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "agastyamishra.snipe-app",
+        "paths": ["/join*"]
+      }
+    ]
+  }
+}
