@@ -43,6 +43,7 @@ export default function GameScreen() {
   const [timerRunning, setTimerRunning] = useState(false);
   const [countdown, setCountdown] = useState(getMidnightCountdown());
   const [finalScore, setFinalScore] = useState(0);
+  const [saveError, setSaveError] = useState(false);
   const timerStartRef = useRef<number>(0);
   const hasAnsweredRef = useRef(false);
   const isTransitioningRef = useRef(false);
@@ -200,6 +201,13 @@ export default function GameScreen() {
 
         // Persist to Firestore
         const userId = auth.currentUser?.uid;
+        if (!userId) {
+          // Auth state lost during gameplay — log remotely for diagnosis
+          import('../../lib/firestore').then(({ logRemote }) =>
+            logRemote('save_no_auth', { score }),
+          ).catch(() => {});
+          setSaveError(true);
+        }
         if (userId) {
           const questionEntries: QuestionEntry[] = updatedResults.map((r, i) => {
             const q = questions[i];
@@ -213,9 +221,10 @@ export default function GameScreen() {
               selectedAnswer: (r as any).selectedAnswer ?? null,
             };
           });
-          saveGameResult(userId, getTodayDateString(), score, questionEntries).catch((err) =>
-            console.log('[SNIPE] Error saving game result:', err),
-          );
+          saveGameResult(userId, getTodayDateString(), score, questionEntries).catch((err) => {
+            console.log('[SNIPE] Error saving game result:', err);
+            setSaveError(true);
+          });
         }
         return;
       }
@@ -393,6 +402,11 @@ export default function GameScreen() {
           <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 13, color: '#888888', marginBottom: 32 }}>
             questions drop at 12pm EST
           </Text>
+          {saveError && (
+            <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#EF4444', textAlign: 'center', marginBottom: 16 }}>
+              Score failed to save. Check your connection and try reopening the app.
+            </Text>
+          )}
           <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 40, color: '#FFFFFF', fontVariant: ['tabular-nums'], marginBottom: 48 }}>
             {countdown}
           </Text>

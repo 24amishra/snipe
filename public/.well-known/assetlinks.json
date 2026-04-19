@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.snipe.trivia",
+      "sha256_cert_fingerprints": [
+        "TODO:RUN_eas_credentials_TO_GET_SHA256_FINGERPRINT"
+      ]
+    }
+  }
+]

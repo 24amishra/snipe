@@ -2,7 +2,7 @@
   "expo": {
     "name": "Snipe",
     "slug": "snipe",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "snipe",
@@ -16,14 +16,14 @@
       "supportsTablet": true,
       "bundleIdentifier": "snipe-app",
       "associatedDomains": [
-        "applinks:snipe-psi.vercel.app",
-        "applinks:snipe.app"
+        "applinks:snipe-psi.vercel.app"
       ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
+      "package": "app.snipe.trivia",
       "adaptiveIcon": {
         "backgroundColor": "#000000",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -37,7 +37,7 @@
           "data": [
             {
               "scheme": "https",
-              "host": "snipe.app",
+              "host": "snipe-psi.vercel.app",
               "pathPrefix": "/join"
             },
             {

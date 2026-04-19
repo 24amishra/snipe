@@ -20,6 +20,16 @@ import { db } from './firebase';
 import { getTodayDateString, getWeekDateRange } from './gameUtils';
 import { normalizeCategory } from './constants';
 
+// Remote diagnostic logger — writes to Firestore 'logs' collection
+// View in Firebase Console > Firestore > logs
+export function logRemote(event: string, data: Record<string, unknown>) {
+  addDoc(collection(db, 'logs'), {
+    event,
+    ...data,
+    timestamp: serverTimestamp(),
+  }).catch(() => {}); // fire-and-forget, never block the caller
+}
+
 // ─── Types ───────────────────────────────────────────────────────────
 
 export interface CategoryStats {
@@ -39,6 +49,7 @@ export interface UserProfile {
   lastPlayedDate: string;
   groupIds: string[];
   notificationsEnabled: boolean;
+  pushToken?: string | null;
   categoryStats: Record<string, CategoryStats>;
 }
 
@@ -145,22 +156,46 @@ export async function saveGameResult(
   date: string,
   score: number,
   questions: QuestionEntry[],
+  _retryCount = 0,
 ): Promise<void> {
+  logRemote('save_start', { userId, date, score, retry: _retryCount });
+
   // 1. Write the gameResults document
-  await addDoc(collection(db, 'gameResults'), {
-    userId,
-    date,
-    score,
-    completedAt: serverTimestamp(),
-    questions,
-  });
+  try {
+    await addDoc(collection(db, 'gameResults'), {
+      userId,
+      date,
+      score,
+      completedAt: serverTimestamp(),
+      questions,
+    });
+  } catch (err: any) {
+    logRemote('save_gameresult_failed', {
+      userId, date, score,
+      retry: _retryCount,
+      error: err?.code ?? err?.message ?? String(err),
+    });
+    // Retry after 1.5s — handles Firebase Auth token propagation delay on first login
+    if (_retryCount < 2) {
+      await new Promise((r) => setTimeout(r, 1500));
+      return saveGameResult(userId, date, score, questions, _retryCount + 1);
+    }
+    throw err;
+  }
 
   // 2. Update aggregated user stats
   const userRef = doc(db, 'users', userId);
   const userSnap = await getDoc(userRef);
-  if (!userSnap.exists()) return;
+  if (!userSnap.exists()) {
+    logRemote('save_no_user_doc', { userId, date, score });
+    return;
+  }
 
   const userData = userSnap.data() as UserProfile;
+
+  if (!userData.groupIds || userData.groupIds.length === 0) {
+    logRemote('save_no_groups', { userId, date, score });
+  }
 
   // Build category stat increments
   const updatedCategoryStats: Record<string, CategoryStats> = { ...userData.categoryStats };
@@ -185,22 +220,37 @@ export async function saveGameResult(
         ? userData.currentStreak // already played today (shouldn't happen but safe)
         : 1;
 
-  await updateDoc(userRef, {
-    gamesPlayed: increment(1),
-    currentStreak: newStreak,
-    lastPlayedDate: date,
-    categoryStats: updatedCategoryStats,
-  });
+  try {
+    await updateDoc(userRef, {
+      gamesPlayed: increment(1),
+      currentStreak: newStreak,
+      lastPlayedDate: date,
+      categoryStats: updatedCategoryStats,
+    });
+  } catch (err: any) {
+    logRemote('save_user_update_failed', {
+      userId, date, score,
+      error: err?.code ?? err?.message ?? String(err),
+    });
+    throw err;
+  }
 
-  // 3. Update leaderboard entries in every group the user belongs to
-  for (const groupId of userData.groupIds) {
-    await updateLeaderboardEntry(groupId, userId, userData.username, {
+  // 3. Update leaderboard entries in every group the user belongs to (parallel, fault-tolerant)
+  const groupIds = userData.groupIds ?? [];
+  const leaderboardUpdates = groupIds.map((groupId) =>
+    updateLeaderboardEntry(groupId, userId, userData.username, {
       score,
       questions,
       newStreak,
       newGamesPlayed: userData.gamesPlayed + 1,
-    });
-  }
+    }).catch((err: any) =>
+      logRemote('save_leaderboard_failed', {
+        userId, date, score, groupId,
+        error: err?.code ?? err?.message ?? String(err),
+      }),
+    ),
+  );
+  await Promise.all(leaderboardUpdates);
 
   // 4. Update global daily stats (for app-wide average)
   const dailyStatsRef = doc(db, 'dailyStats', date);
@@ -353,22 +403,68 @@ export async function joinGroup(
     groupIds: arrayUnion(groupId),
   });
 
-  // Create leaderboard entry
+  // Create leaderboard entry — backfill with any existing game results
   const userSnap = await getDoc(doc(db, 'users', userId));
-  const username = userSnap.exists() ? (userSnap.data() as UserProfile).username : 'unknown';
+  const userData = userSnap.exists() ? (userSnap.data() as UserProfile) : null;
+  const username = userData?.username ?? 'unknown';
 
-  await setDoc(doc(db, 'groups', groupId, 'leaderboard', userId), {
-    userId,
-    username,
-    totalScore: 0,
-    wins: 0,
-    currentStreak: 0,
-    gamesPlayed: 0,
-    avgPct: 0,
-    avgSpeed: 0,
-    categoryStats: {},
-    lastUpdated: serverTimestamp(),
-  });
+  // Check if the user already has game results that should count
+  const existingGames = await getDocs(
+    query(collection(db, 'gameResults'), where('userId', '==', userId)),
+  );
+
+  if (existingGames.empty) {
+    await setDoc(doc(db, 'groups', groupId, 'leaderboard', userId), {
+      userId,
+      username,
+      totalScore: 0,
+      wins: 0,
+      currentStreak: 0,
+      gamesPlayed: 0,
+      avgPct: 0,
+      avgSpeed: 0,
+      categoryStats: {},
+      lastUpdated: serverTimestamp(),
+    });
+  } else {
+    // Backfill: aggregate all past game results into the leaderboard entry
+    let totalScore = 0;
+    let totalCorrect = 0;
+    let totalQuestions = 0;
+    let totalTimeSpent = 0;
+    const categoryStats: Record<string, { correct: number; total: number }> = {};
+
+    existingGames.docs.forEach((d) => {
+      const game = d.data() as GameResult;
+      totalScore += game.score;
+      for (const q of game.questions) {
+        totalQuestions += 1;
+        if (q.correct) totalCorrect += 1;
+        totalTimeSpent += 8 - q.timeRemaining;
+        const cat = normalizeCategory(q.category);
+        if (!categoryStats[cat]) categoryStats[cat] = { correct: 0, total: 0 };
+        categoryStats[cat].total += 1;
+        if (q.correct) categoryStats[cat].correct += 1;
+      }
+    });
+
+    const gamesPlayed = existingGames.size;
+    const avgPct = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+    const avgSpeed = totalQuestions > 0 ? Math.round((totalTimeSpent / totalQuestions) * 10) / 10 : 0;
+
+    await setDoc(doc(db, 'groups', groupId, 'leaderboard', userId), {
+      userId,
+      username,
+      totalScore,
+      wins: 0,
+      currentStreak: userData?.currentStreak ?? 0,
+      gamesPlayed,
+      avgPct,
+      avgSpeed,
+      categoryStats,
+      lastUpdated: serverTimestamp(),
+    });
+  }
 
   return { groupId, groupName: groupData.name };
 }
@@ -376,8 +472,11 @@ export async function joinGroup(
 export async function getGroupLeaderboard(groupId: string): Promise<LeaderboardEntry[]> {
   const snap = await getDocs(collection(db, 'groups', groupId, 'leaderboard'));
   const entries = snap.docs.map((d) => d.data() as LeaderboardEntry);
-  // Sort by totalScore descending
-  entries.sort((a, b) => b.totalScore - a.totalScore);
+  // Sort by totalScore descending, then by speed (lower = faster = ranks higher)
+  entries.sort((a, b) => {
+    if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+    return (a.avgSpeed ?? 0) - (b.avgSpeed ?? 0);
+  });
   return entries;
 }
 
@@ -553,8 +652,11 @@ export async function getGroupTodayScores(
     });
   });
 
-  // Sort by score descending
-  todayEntries.sort((a, b) => b.score - a.score);
+  // Sort by score descending, then by speed (lower = faster = ranks higher)
+  todayEntries.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.avgSpeed - b.avgSpeed;
+  });
   return todayEntries;
 }
 

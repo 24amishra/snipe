@@ -122,7 +122,12 @@ export default function LeaderboardTable({
         aVal = aCat && aCat.total > 0 ? aCat.correct / aCat.total : -1;
         bVal = bCat && bCat.total > 0 ? bCat.correct / bCat.total : -1;
       }
-      return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+      const primary = sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+      if (primary !== 0) return primary;
+      if (sortCol === 'score' || sortCol === 'avg') {
+        return a.avgSpeed - b.avgSpeed;
+      }
+      return 0;
     });
 
     return [...sortedPlayed, ...notPlayed];
@@ -154,7 +159,12 @@ export default function LeaderboardTable({
         aVal = aCat && aCat.total > 0 ? aCat.correct / aCat.total : -1;
         bVal = bCat && bCat.total > 0 ? bCat.correct / bCat.total : -1;
       }
-      return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+      const primary = sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+      if (primary !== 0) return primary;
+      if (sortCol === 'score' || sortCol === 'avg') {
+        return (a.avgSpeed ?? 0) - (b.avgSpeed ?? 0);
+      }
+      return 0;
     });
   }, [activeView, entries, sortCol, sortDir]);
 

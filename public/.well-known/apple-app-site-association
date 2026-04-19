@@ -1,10 +1,14 @@
 {
   "applinks": {
-    "apps": [],
     "details": [
       {
-        "appID": "agastyamishra.snipe-app",
-        "paths": ["/join*"]
+        "appIDs": ["NAZ45S94B8.app.snipe.trivia"],
+        "components": [
+          {
+            "/": "/join*",
+            "comment": "Group invite deep links"
+          }
+        ]
       }
     ]
   }
