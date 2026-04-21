@@ -3,11 +3,11 @@ import { View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createUserWithEmailAndPassword, deleteUser } from 'firebase/auth';
+import { createUserWithEmailAndPassword, deleteUser, sendEmailVerification } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import SnipeWordmark from '../../components/SnipeWordmark';
 import { useGoogleAuth } from '../../lib/googleAuth';
-import { createUserProfile, checkUsernameAvailable } from '../../lib/firestore';
+import { checkUsernameAvailable } from '../../lib/firestore';
 
 export default function Signup() {
   const router = useRouter();
@@ -49,22 +49,22 @@ export default function Signup() {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
 
       try {
-        // Now check username uniqueness (requires auth per Firestore rules)
+        // Check username uniqueness (requires auth per Firestore rules)
         const available = await checkUsernameAvailable(username.trim());
         if (!available) {
-          // Roll back: delete the auth user since we can't create the profile
           await deleteUser(cred.user);
           setError('Username is already taken');
           setLoading(false);
           return;
         }
 
-        await createUserProfile(cred.user.uid, username.trim(), email);
-        await redirectAfterAuth();
-      } catch (profileError) {
-        // Roll back auth user if profile creation fails
+        // Store username for profile creation after verification
+        await AsyncStorage.setItem('snipe_pending_username', username.trim());
+        await sendEmailVerification(cred.user);
+        router.replace('/auth/verify');
+      } catch (innerError) {
         await deleteUser(cred.user).catch(() => {});
-        throw profileError;
+        throw innerError;
       }
     } catch (e: any) {
       console.log('[SNIPE] Signup error:', e?.message);

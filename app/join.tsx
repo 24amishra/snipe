@@ -29,15 +29,23 @@ export default function JoinScreen() {
 
   useEffect(() => {
     const attempt = async () => {
-      // Web: user doesn't have the app — redirect to app store
+      // Web: try to open the app first, fall back to app store
       if (Platform.OS === 'web') {
         const os = detectMobileOS();
-        if (os === 'ios') {
-          window.location.href = APP_STORE_URL;
-          return;
-        }
-        if (os === 'android') {
-          window.location.href = PLAY_STORE_URL;
+        if (os === 'ios' || os === 'android') {
+          // Try custom scheme to open the app directly
+          const appUrl = `snipe://join?groupId=${groupId ?? ''}&code=${code ?? ''}`;
+          const storeUrl = os === 'ios' ? APP_STORE_URL : PLAY_STORE_URL;
+
+          // If the app is installed, this will open it.
+          // If not, nothing happens and we redirect to the store after a delay.
+          window.location.href = appUrl;
+          setTimeout(() => {
+            // If we're still on this page, the app didn't open — go to store
+            if (!document.hidden) {
+              window.location.href = storeUrl;
+            }
+          }, 1500);
           return;
         }
         // Desktop browser — show download prompt

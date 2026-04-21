@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, ScrollView, Modal, Pressable, Share, TextInput } from 'react-native';
+import { View, Text, ScrollView, Modal, Pressable, Share, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
 import { useLocalSearchParams } from 'expo-router';
@@ -526,6 +526,7 @@ export default function LeaderboardTab() {
 
       {/* ─── Join Group Modal ────────────────────────────────────────── */}
       <Modal visible={showJoinModal} transparent animationType="slide">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <Pressable onPress={closeJoinModal} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.85)' }}>
           <Pressable onPress={() => {}} style={{ backgroundColor: '#0F0F0F', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 }}>
             <View style={{ alignItems: 'center', marginBottom: 16 }}>
@@ -580,6 +581,7 @@ export default function LeaderboardTab() {
             )}
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* About Modal */}

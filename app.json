@@ -2,7 +2,7 @@
   "expo": {
     "name": "Snipe",
     "slug": "snipe",
-    "version": "1.0.2",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "snipe",
@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "snipe-app",
+      "bundleIdentifier": "app.snipe.trivia",
       "associatedDomains": [
         "applinks:snipe-psi.vercel.app"
       ],
@@ -78,6 +78,12 @@
       "eas": {
         "projectId": "0b8ecf82-5b85-43de-a85f-7f03d7b1c996"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/0b8ecf82-5b85-43de-a85f-7f03d7b1c996"
     }
   }
 }
