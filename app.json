@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.snipe.trivia",
+      "bundleIdentifier": "snipe-app",
       "associatedDomains": [
         "applinks:snipe-psi.vercel.app"
       ],
@@ -65,6 +65,7 @@
       "expo-router",
       "expo-font",
       "expo-web-browser",
+      "expo-updates",
       [
         "expo-notifications",
         {
@@ -83,7 +84,9 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/0b8ecf82-5b85-43de-a85f-7f03d7b1c996"
+      "url": "https://u.expo.dev/0b8ecf82-5b85-43de-a85f-7f03d7b1c996",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
     }
   }
 }

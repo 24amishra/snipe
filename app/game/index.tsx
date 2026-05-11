@@ -16,7 +16,7 @@ import TimerBar from '../../components/TimerBar';
 import { calculateScore, scoreForQuestion, getMidnightCountdown, getTodayDateString } from '../../lib/gameUtils';
 import type { QuestionResult, GameSession } from '../../lib/gameUtils';
 import { scheduleDailyNotification } from '../../lib/notifications';
-import { saveGameResult, getTodayQuestions, type QuestionEntry, type QuizQuestion } from '../../lib/firestore';
+import { submitGameResultToServer, getTodayQuestions, type QuestionEntry, type QuizQuestion } from '../../lib/firestore';
 import { auth } from '../../lib/firebase';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -199,16 +199,21 @@ export default function GameScreen() {
         (global as any).__snipeGameComplete = true;
         setPhase('gameover');
 
-        // Persist to Firestore
+        // Submit to server for authoritative scoring (falls back to client save)
         const userId = auth.currentUser?.uid;
         if (!userId) {
-          // Auth state lost during gameplay — log remotely for diagnosis
           import('../../lib/firestore').then(({ logRemote }) =>
             logRemote('save_no_auth', { score }),
           ).catch(() => {});
           setSaveError(true);
         }
         if (userId) {
+          const answers = updatedResults.map((r, i) => ({
+            questionId: questions[i].id,
+            selectedAnswer: (r as any).selectedAnswer ?? null,
+            timeRemaining: r.timeRemaining,
+          }));
+          // Build question entries for client-side fallback
           const questionEntries: QuestionEntry[] = updatedResults.map((r, i) => {
             const q = questions[i];
             const pointsEarned = scoreForQuestion(r.correct, r.timeRemaining);
@@ -221,10 +226,17 @@ export default function GameScreen() {
               selectedAnswer: (r as any).selectedAnswer ?? null,
             };
           });
-          saveGameResult(userId, getTodayDateString(), score, questionEntries).catch((err) => {
-            console.log('[SNIPE] Error saving game result:', err);
-            setSaveError(true);
-          });
+          const date = getTodayDateString();
+          submitGameResultToServer(userId, date, score, answers, questionEntries)
+            .then(({ score: serverScore }) => {
+              if (serverScore !== score) {
+                setFinalScore(serverScore);
+              }
+            })
+            .catch((err) => {
+              console.log('[SNIPE] Error submitting game result:', err);
+              setSaveError(true);
+            });
         }
         return;
       }

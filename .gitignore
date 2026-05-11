@@ -47,3 +47,12 @@ yarn-error.*
 # Firebase Cloud Functions
 functions/lib/
 functions/node_modules/
+
+# Question Upload tool
+questionUpload/node_modules/
+questionUpload/.env
+questionUpload/serviceAccountKey.json
+questionUpload/package-lock.json
+
+certs/
+credentials.json

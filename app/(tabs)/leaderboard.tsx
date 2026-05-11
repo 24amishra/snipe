@@ -19,6 +19,7 @@ import {
 import { auth } from '../../lib/firebase';
 import { getGroupDoc, buildInviteLink, removeMember } from '../../lib/groupUtils';
 import { haveScoresDropped, getTodayDateString } from '../../lib/gameUtils';
+import { useCachedFetch, CacheKeys, invalidateCache } from '../../lib/cache';
 
 interface GroupWithLeaderboard {
   id: string;
@@ -31,8 +32,6 @@ interface GroupWithLeaderboard {
 
 export default function LeaderboardTab() {
   const { groupId: focusGroupId } = useLocalSearchParams<{ groupId?: string }>();
-  const [loading, setLoading] = useState(true);
-  const [groups, setGroups] = useState<GroupWithLeaderboard[]>([]);
   const opacity = useSharedValue(0);
   const translateX = useSharedValue(-40);
   const scrollRef = useRef<ScrollView>(null);
@@ -45,6 +44,9 @@ export default function LeaderboardTab() {
   // Remove member bottom sheet state
   const [removeTarget, setRemoveTarget] = useState<{ groupId: string; groupName: string; userId: string; username: string } | null>(null);
   const [removing, setRemoving] = useState(false);
+
+  // Optimistic local state for member removal
+  const [localGroups, setLocalGroups] = useState<GroupWithLeaderboard[] | null>(null);
 
   // Join group modal state
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -61,65 +63,64 @@ export default function LeaderboardTab() {
   const [scoresReleased, setScoresReleased] = useState(haveScoresDropped());
   const [showAbout, setShowAbout] = useState(false);
 
+  const cacheKey = CacheKeys.leaderboard(currentUserId);
+
+  const fetchLeaderboardData = useCallback(async (): Promise<GroupWithLeaderboard[]> => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return [];
+    const userGroups = await getUserGroups(uid);
+    const today = getTodayDateString();
+    const groupsWithLb: GroupWithLeaderboard[] = await Promise.all(
+      userGroups.map(async (g) => {
+        const [lb, groupDoc, todayScores] = await Promise.all([
+          getGroupLeaderboard(g.id),
+          getGroupDoc(g.id),
+          getGroupTodayScores(g.id, today),
+        ]);
+        return {
+          id: g.id,
+          name: g.name,
+          ownerId: groupDoc?.createdBy ?? '',
+          inviteCode: groupDoc?.inviteCode ?? '',
+          entries: lb.map((e) => ({
+            ...e,
+            avgSpeed: e.avgSpeed ?? 0,
+            categoryStats: e.categoryStats ?? {},
+          })),
+          todayEntries: todayScores,
+        };
+      }),
+    );
+    return groupsWithLb;
+  }, []);
+
+  const { data: cachedGroups, loading, refetch } = useCachedFetch<GroupWithLeaderboard[]>(cacheKey, fetchLeaderboardData);
+
+  // Clear optimistic local state when cache updates
+  useEffect(() => {
+    if (cachedGroups) {
+      setLocalGroups(null);
+    }
+  }, [cachedGroups]);
+
+  // Display uses localGroups (optimistic) or cachedGroups (from cache/fetch)
+  const groups = localGroups ?? cachedGroups ?? [];
+
   // Poll score release status every second
   useEffect(() => {
     const interval = setInterval(() => setScoresReleased(haveScoresDropped()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Slide in from left on every tab focus
+  // Slide in animation + refetch on tab focus
   useFocusEffect(
     useCallback(() => {
       opacity.value = 0;
       translateX.value = -40;
       opacity.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.ease) });
       translateX.value = withTiming(0, { duration: 300, easing: Easing.out(Easing.ease) });
-    }, [])
-  );
-
-  // Reload groups + leaderboard data every time the tab is focused
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      const load = async () => {
-        try {
-          const uid = auth.currentUser?.uid;
-          if (uid) {
-            const userGroups = await getUserGroups(uid);
-            const today = getTodayDateString();
-            const groupsWithLb: GroupWithLeaderboard[] = await Promise.all(
-              userGroups.map(async (g) => {
-                const [lb, groupDoc, todayScores] = await Promise.all([
-                  getGroupLeaderboard(g.id),
-                  getGroupDoc(g.id),
-                  getGroupTodayScores(g.id, today),
-                ]);
-                return {
-                  id: g.id,
-                  name: g.name,
-                  ownerId: groupDoc?.createdBy ?? '',
-                  inviteCode: groupDoc?.inviteCode ?? '',
-                  entries: lb.map((e) => ({
-                    ...e,
-                    avgSpeed: e.avgSpeed ?? 0,
-                    categoryStats: e.categoryStats ?? {},
-                  })),
-                  todayEntries: todayScores,
-                };
-              }),
-            );
-            if (!cancelled) setGroups(groupsWithLb);
-          }
-        } catch (e) {
-          console.log('[SNIPE] Error loading leaderboard:', e);
-        }
-        if (!cancelled) {
-          setLoading(false);
-        }
-      };
-      load();
-      return () => { cancelled = true; };
-    }, [])
+      refetch();
+    }, [refetch])
   );
 
   // Scroll to focused group after loading
@@ -207,13 +208,14 @@ export default function LeaderboardTab() {
     try {
       await removeMember(removeTarget.groupId, removeTarget.userId);
       // Optimistic update: remove the member from local state
-      setGroups((prev) =>
-        prev.map((g) =>
+      setLocalGroups(
+        groups.map((g) =>
           g.id === removeTarget.groupId
             ? { ...g, entries: g.entries.filter((e) => e.userId !== removeTarget.userId) }
             : g
         )
       );
+      invalidateCache('leaderboard:');
       closeRemoveSheet();
     } catch (e) {
       console.log('[SNIPE] Error removing member:', e);
@@ -251,31 +253,9 @@ export default function LeaderboardTab() {
         return;
       }
       setJoinSuccess(true);
-      // Reload leaderboard data
-      const todayDate = getTodayDateString();
-      const userGroups = await getUserGroups(uid);
-      const groupsWithLb: GroupWithLeaderboard[] = await Promise.all(
-        userGroups.map(async (g) => {
-          const [lb, groupDoc, todayScores] = await Promise.all([
-            getGroupLeaderboard(g.id),
-            getGroupDoc(g.id),
-            getGroupTodayScores(g.id, todayDate),
-          ]);
-          return {
-            id: g.id,
-            name: g.name,
-            ownerId: groupDoc?.createdBy ?? '',
-            inviteCode: groupDoc?.inviteCode ?? '',
-            entries: lb.map((e) => ({
-              ...e,
-              avgSpeed: e.avgSpeed ?? 0,
-              categoryStats: e.categoryStats ?? {},
-            })),
-            todayEntries: todayScores,
-          };
-        }),
-      );
-      setGroups(groupsWithLb);
+      invalidateCache('leaderboard:');
+      invalidateCache('today:');
+      refetch();
       setTimeout(closeJoinModal, 1000);
     } catch (e) {
       console.log('[SNIPE] Error joining group:', e);

@@ -2,6 +2,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { Expo, ExpoPushMessage } from "expo-server-sdk";
 
@@ -27,6 +28,389 @@ interface GameResult {
 interface GroupDoc {
   memberIds: string[];
 }
+
+interface UserProfile {
+  username: string;
+  groupIds: string[];
+  pushToken?: string | null;
+  notificationsEnabled?: boolean;
+  currentStreak: number;
+  gamesPlayed: number;
+  lastPlayedDate: string;
+  categoryStats: Record<string, { correct: number; total: number; totalTime: number }>;
+}
+
+interface LeaderboardEntry {
+  userId: string;
+  username: string;
+  totalScore: number;
+  wins: number;
+  currentStreak: number;
+  gamesPlayed: number;
+  avgPct: number;
+  avgSpeed: number;
+  categoryStats: Record<string, { correct: number; total: number }>;
+}
+
+// ─── Helpers (duplicated from client — Cloud Functions can't import from lib/) ──
+
+const CATEGORIES = [
+  "Sports",
+  "History",
+  "Science",
+  "Entertainment",
+  "Music",
+  "Current Events",
+  "Other",
+] as const;
+
+type Category = (typeof CATEGORIES)[number];
+
+const CATEGORY_LOOKUP: Record<string, Category> = {};
+for (const cat of CATEGORIES) {
+  CATEGORY_LOOKUP[cat.toLowerCase()] = cat;
+}
+
+function normalizeCategory(raw: string): Category {
+  return CATEGORY_LOOKUP[raw.toLowerCase().trim()] ?? "Other";
+}
+
+function scoreForQuestion(correct: boolean, timeRemaining: number): number {
+  if (!correct) return 0;
+  return 100 + Math.floor(timeRemaining * 6);
+}
+
+/**
+ * Returns the current "game day" date string in EST.
+ * After noon EST, returns tomorrow's date (next day's questions are live).
+ */
+function getGameDateString(): string {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const hourFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    hour12: false,
+  });
+  const estHour = parseInt(hourFormatter.format(now), 10);
+
+  if (estHour >= 12) {
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    return formatter.format(tomorrow);
+  }
+  return formatter.format(now);
+}
+
+/**
+ * Returns yesterday's date string in EST (for streak calculation).
+ */
+function getYesterdayDateStringEST(): string {
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(yesterday);
+}
+
+// ─── Leaderboard Update (Admin SDK version) ─────────────────────────
+
+async function updateLeaderboardEntryAdmin(
+  groupId: string,
+  userId: string,
+  username: string,
+  result: {
+    score: number;
+    questions: QuestionEntry[];
+    newStreak: number;
+    newGamesPlayed: number;
+  },
+): Promise<void> {
+  const entryRef = db.doc(`groups/${groupId}/leaderboard/${userId}`);
+  const entrySnap = await entryRef.get();
+
+  const correctCount = result.questions.filter((q) => q.correct).length;
+  const totalQuestions = result.questions.length;
+
+  // Compute avg speed for this game (seconds spent per question)
+  const gameAvgSpeed =
+    totalQuestions > 0
+      ? result.questions.reduce((sum, q) => sum + (8 - q.timeRemaining), 0) /
+        totalQuestions
+      : 0;
+
+  // Build per-category stats for this game
+  const gameCategoryStats: Record<string, { correct: number; total: number }> =
+    {};
+  for (const q of result.questions) {
+    const cat = normalizeCategory(q.category);
+    if (!gameCategoryStats[cat]) {
+      gameCategoryStats[cat] = { correct: 0, total: 0 };
+    }
+    gameCategoryStats[cat].total += 1;
+    if (q.correct) gameCategoryStats[cat].correct += 1;
+  }
+
+  if (entrySnap.exists) {
+    const existing = entrySnap.data() as LeaderboardEntry;
+    const newTotalScore = existing.totalScore + result.score;
+    const oldTotalCorrect = Math.round(
+      (existing.avgPct / 100) * existing.gamesPlayed * 7,
+    );
+    const newTotalCorrect = oldTotalCorrect + correctCount;
+    const newTotalQuestions = existing.gamesPlayed * 7 + totalQuestions;
+    const newAvgPct =
+      newTotalQuestions > 0
+        ? Math.round((newTotalCorrect / newTotalQuestions) * 100)
+        : 0;
+
+    // Weighted running average for speed
+    const oldTotalQs = existing.gamesPlayed * 7;
+    const newAvgSpeed =
+      oldTotalQs + totalQuestions > 0
+        ? ((existing.avgSpeed ?? 0) * oldTotalQs +
+            gameAvgSpeed * totalQuestions) /
+          (oldTotalQs + totalQuestions)
+        : 0;
+
+    // Merge category stats
+    const mergedCategoryStats: Record<
+      string,
+      { correct: number; total: number }
+    > = {
+      ...(existing.categoryStats ?? {}),
+    };
+    for (const [cat, stats] of Object.entries(gameCategoryStats)) {
+      if (!mergedCategoryStats[cat]) {
+        mergedCategoryStats[cat] = { correct: 0, total: 0 };
+      }
+      mergedCategoryStats[cat].correct += stats.correct;
+      mergedCategoryStats[cat].total += stats.total;
+    }
+
+    await entryRef.update({
+      totalScore: newTotalScore,
+      currentStreak: result.newStreak,
+      gamesPlayed: result.newGamesPlayed,
+      avgPct: newAvgPct,
+      avgSpeed: Math.round(newAvgSpeed * 10) / 10,
+      categoryStats: mergedCategoryStats,
+      lastUpdated: FieldValue.serverTimestamp(),
+    });
+  } else {
+    const avgPct =
+      totalQuestions > 0
+        ? Math.round((correctCount / totalQuestions) * 100)
+        : 0;
+    await entryRef.set({
+      userId,
+      username,
+      totalScore: result.score,
+      wins: 0,
+      currentStreak: result.newStreak,
+      gamesPlayed: 1,
+      avgPct,
+      avgSpeed: Math.round(gameAvgSpeed * 10) / 10,
+      categoryStats: gameCategoryStats,
+      lastUpdated: FieldValue.serverTimestamp(),
+    });
+  }
+}
+
+// ─── submitGameResult — Server-side scoring callable ────────────────
+
+interface AnswerInput {
+  questionId: string;
+  selectedAnswer: string | null;
+  timeRemaining: number;
+}
+
+interface QuizQuestion {
+  id: string;
+  category: string;
+  question: string;
+  choices: string[];
+  answer: string;
+}
+
+export const submitGameResult = onCall(async (request) => {
+  // 1. Auth check
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Must be logged in to submit a game result.");
+  }
+  const uid = request.auth.uid;
+
+  // 2. Input validation
+  const { date, answers } = request.data as {
+    date: string;
+    answers: AnswerInput[];
+  };
+
+  if (!date || typeof date !== "string") {
+    throw new HttpsError("invalid-argument", "Missing or invalid date.");
+  }
+
+  if (!Array.isArray(answers) || answers.length !== 7) {
+    throw new HttpsError("invalid-argument", "Must submit exactly 7 answers.");
+  }
+
+  // Validate date matches current game day
+  const currentGameDate = getGameDateString();
+  if (date !== currentGameDate) {
+    throw new HttpsError(
+      "failed-precondition",
+      `Date mismatch: expected ${currentGameDate}, got ${date}.`,
+    );
+  }
+
+  // Clamp timeRemaining to [0, 8]
+  for (const a of answers) {
+    a.timeRemaining = Math.max(0, Math.min(8, a.timeRemaining));
+  }
+
+  // 3. Duplicate guard
+  const existingResults = await db
+    .collection("gameResults")
+    .where("userId", "==", uid)
+    .where("date", "==", date)
+    .limit(1)
+    .get();
+
+  if (!existingResults.empty) {
+    throw new HttpsError("already-exists", "Already played today.");
+  }
+
+  // 4. Fetch daily questions
+  const dailyQSnap = await db.doc(`dailyQuestions/${date}`).get();
+  if (!dailyQSnap.exists) {
+    throw new HttpsError("not-found", "No questions found for this date.");
+  }
+  const dailyQuestions = (dailyQSnap.data()!.questions ?? []) as QuizQuestion[];
+
+  // Build lookup by questionId
+  const questionMap = new Map<string, QuizQuestion>();
+  for (const q of dailyQuestions) {
+    questionMap.set(q.id, q);
+  }
+
+  // 5. Server-side scoring
+  let totalScore = 0;
+  const questionEntries: QuestionEntry[] = [];
+
+  for (const a of answers) {
+    const q = questionMap.get(a.questionId);
+    if (!q) {
+      throw new HttpsError(
+        "invalid-argument",
+        `Unknown questionId: ${a.questionId}`,
+      );
+    }
+
+    const correct = a.selectedAnswer !== null && a.selectedAnswer === q.answer;
+    const points = scoreForQuestion(correct, a.timeRemaining);
+    totalScore += points;
+
+    questionEntries.push({
+      questionId: a.questionId,
+      category: q.category,
+      correct,
+      timeRemaining: a.timeRemaining,
+      pointsEarned: points,
+      selectedAnswer: a.selectedAnswer,
+    });
+  }
+
+  // 6. Write gameResults doc
+  await db.collection("gameResults").add({
+    userId: uid,
+    date,
+    score: totalScore,
+    completedAt: FieldValue.serverTimestamp(),
+    questions: questionEntries,
+  });
+
+  // 7. Update user profile
+  const userRef = db.doc(`users/${uid}`);
+  const userSnap = await userRef.get();
+  if (!userSnap.exists) {
+    logger.warn(`No user doc for uid ${uid}, skipping profile update.`);
+    return { score: totalScore, questions: questionEntries };
+  }
+
+  const userData = userSnap.data() as UserProfile;
+
+  // Build category stat increments
+  const updatedCategoryStats: Record<
+    string,
+    { correct: number; total: number; totalTime: number }
+  > = { ...userData.categoryStats };
+  for (const q of questionEntries) {
+    const cat = normalizeCategory(q.category);
+    if (!updatedCategoryStats[cat]) {
+      updatedCategoryStats[cat] = { correct: 0, total: 0, totalTime: 0 };
+    }
+    updatedCategoryStats[cat].total += 1;
+    if (q.correct) updatedCategoryStats[cat].correct += 1;
+    updatedCategoryStats[cat].totalTime += 8 - q.timeRemaining;
+  }
+
+  // Streak logic (EST-aware)
+  const yesterdayStr = getYesterdayDateStringEST();
+  const newStreak =
+    userData.lastPlayedDate === yesterdayStr
+      ? userData.currentStreak + 1
+      : userData.lastPlayedDate === date
+        ? userData.currentStreak
+        : 1;
+
+  await userRef.update({
+    gamesPlayed: FieldValue.increment(1),
+    currentStreak: newStreak,
+    lastPlayedDate: date,
+    categoryStats: updatedCategoryStats,
+  });
+
+  // 8. Update leaderboard entries in every group (parallel, fault-tolerant)
+  const groupIds = userData.groupIds ?? [];
+  const leaderboardUpdates = groupIds.map((groupId) =>
+    updateLeaderboardEntryAdmin(groupId, uid, userData.username, {
+      score: totalScore,
+      questions: questionEntries,
+      newStreak,
+      newGamesPlayed: userData.gamesPlayed + 1,
+    }).catch((err) =>
+      logger.error(`Leaderboard update failed for group ${groupId}:`, err),
+    ),
+  );
+  await Promise.all(leaderboardUpdates);
+
+  // 9. Update dailyStats
+  const dailyStatsRef = db.doc(`dailyStats/${date}`);
+  const dailyStatsSnap = await dailyStatsRef.get();
+  if (dailyStatsSnap.exists) {
+    await dailyStatsRef.update({
+      totalScore: FieldValue.increment(totalScore),
+      playerCount: FieldValue.increment(1),
+    });
+  } else {
+    await dailyStatsRef.set({
+      totalScore: totalScore,
+      playerCount: 1,
+    });
+  }
+
+  // 10. Return score and question entries to client
+  logger.info(`submitGameResult: uid=${uid}, date=${date}, score=${totalScore}`);
+  return { score: totalScore, questions: questionEntries };
+});
 
 /**
  * Runs daily at 12pm EST (game-day cutover).
@@ -158,13 +542,6 @@ export const awardDailyWinners = onSchedule(
 );
 
 // ─── Push Notifications on Leaderboard Displacement ──────────────────
-
-interface UserProfile {
-  username: string;
-  groupIds: string[];
-  pushToken?: string | null;
-  notificationsEnabled?: boolean;
-}
 
 const expo = new Expo();
 

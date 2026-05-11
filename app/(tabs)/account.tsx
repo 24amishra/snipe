@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, Modal, TextInput, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
@@ -8,30 +8,70 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import StatCard from '../../components/StatCard';
 import { cancelAllNotifications, requestNotificationPermissions, scheduleDailyNotification } from '../../lib/notifications';
-import { getUserProfile, updateUsername, checkUsernameAvailable, getWeeklyStats, getTodayMissedQuestions, type UserProfile, type WeeklyStats, type MissedQuestion } from '../../lib/firestore';
-import MissedQuestionsCarousel from '../../components/MissedQuestionsCarousel';
+import { getUserProfile, updateUsername, checkUsernameAvailable, getPersonalBests, getTodayGameReview, getCategoryHistory, type UserProfile, type PersonalBests, type ReviewQuestion, type CategoryHistoryQuestion } from '../../lib/firestore';
+import GameReviewCarousel from '../../components/GameReviewCarousel';
+import CategoryDetailModal from '../../components/CategoryDetailModal';
 import { auth } from '../../lib/firebase';
+import { useCachedFetch, CacheKeys, invalidateCache, getCached, setCache } from '../../lib/cache';
+
+interface AccountTabData {
+  profile: UserProfile | null;
+  review: ReviewQuestion[] | null;
+  isAdmin: boolean;
+}
 
 export default function AccountTab() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [notifLoading, setNotifLoading] = useState(true);
   const [showEditUsername, setShowEditUsername] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [editUsername, setEditUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [usernameSaving, setUsernameSaving] = useState(false);
-  const [weeklyStats, setWeeklyStats] = useState<WeeklyStats | null>(null);
-  const [missedQuestions, setMissedQuestions] = useState<MissedQuestion[] | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [showCategoryDetail, setShowCategoryDetail] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [categoryHistory, setCategoryHistory] = useState<CategoryHistoryQuestion[] | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showReauthModal, setShowReauthModal] = useState(false);
   const [reauthPassword, setReauthPassword] = useState('');
   const [reauthError, setReauthError] = useState('');
   const opacity = useSharedValue(0);
+
+  const uid = auth.currentUser?.uid ?? '';
+  const accountCacheKey = CacheKeys.account(uid);
+  const bestsCacheKey = CacheKeys.personalBests(uid);
+
+  const fetchAccountData = useCallback(async (): Promise<AccountTabData> => {
+    const currentUid = auth.currentUser?.uid;
+    if (!currentUid) return { profile: null, review: null, isAdmin: false };
+
+    const p = await getUserProfile(currentUid);
+    const review = await getTodayGameReview(currentUid);
+
+    let isAdmin = false;
+    const tokenResult = await auth.currentUser?.getIdTokenResult();
+    if (tokenResult?.claims?.admin === true) {
+      isAdmin = true;
+    }
+
+    return { profile: p, review, isAdmin };
+  }, []);
+
+  const fetchPersonalBests = useCallback(async (): Promise<PersonalBests> => {
+    const currentUid = auth.currentUser?.uid;
+    if (!currentUid) return { bestScore: null, fastestAvgSpeed: null, totalWins: 0, globalWins: 0 };
+    return getPersonalBests(currentUid);
+  }, []);
+
+  const { data: accountData, loading: accountLoading, refetch: refetchAccount } = useCachedFetch<AccountTabData>(accountCacheKey, fetchAccountData);
+  const { data: personalBests, loading: bestsLoading, refetch: refetchBests } = useCachedFetch<PersonalBests>(bestsCacheKey, fetchPersonalBests);
+
+  const loading = accountLoading;
+  const profile = accountData?.profile ?? null;
+  const reviewQuestions = accountData?.review ?? null;
+  const isAdmin = accountData?.isAdmin ?? false;
 
   const displayUsername = profile?.username ?? '';
   const displayEmail = profile?.email ?? '';
@@ -44,39 +84,19 @@ export default function AccountTab() {
       }))
     : [];
 
-  // Fetch user profile from Firestore
+  // Fetch on mount
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const uid = auth.currentUser?.uid;
-        if (uid) {
-          const p = await getUserProfile(uid);
-          if (!cancelled && p) {
-            setProfile(p);
-            setEditUsername(p.username);
-          }
-          const missed = await getTodayMissedQuestions(uid);
-          if (!cancelled) {
-            setMissedQuestions(missed);
-          }
-          // Check admin custom claim
-          const tokenResult = await auth.currentUser?.getIdTokenResult();
-          if (!cancelled && tokenResult?.claims?.admin === true) {
-            setIsAdmin(true);
-          }
-        }
-      } catch (e) {
-        console.log('[SNIPE] Error fetching profile:', e);
-      }
-      if (!cancelled) {
-        setLoading(false);
-        opacity.value = withTiming(1, { duration: 200 });
-      }
-    };
-    load();
-    return () => { cancelled = true; };
+    refetchAccount();
+    refetchBests();
+    opacity.value = withTiming(1, { duration: 200 });
   }, []);
+
+  // Sync editUsername when profile loads
+  useEffect(() => {
+    if (profile?.username) {
+      setEditUsername(profile.username);
+    }
+  }, [profile?.username]);
 
   // Load notification preference
   useEffect(() => {
@@ -85,23 +105,6 @@ export default function AccountTab() {
       setTimeout(() => setNotifLoading(false), 300);
     }).catch(() => setNotifLoading(false));
   }, []);
-
-  // Fetch weekly stats
-  useEffect(() => {
-    let cancelled = false;
-    const loadWeekly = async () => {
-      try {
-        const uid = auth.currentUser?.uid;
-        if (!uid || !profile) return;
-        const stats = await getWeeklyStats(uid, profile.groupIds ?? []);
-        if (!cancelled) setWeeklyStats(stats);
-      } catch (e) {
-        console.log('[SNIPE] Error fetching weekly stats:', e);
-      }
-    };
-    if (profile) loadWeekly();
-    return () => { cancelled = true; };
-  }, [profile]);
 
   const handleNotificationToggle = async (value: boolean) => {
     setNotificationsEnabled(value);
@@ -116,15 +119,42 @@ export default function AccountTab() {
 
   const handleLogout = async () => {
     try {
-      // TODO: Firebase signOut
       const { signOut } = await import('firebase/auth');
       const { auth } = await import('../../lib/firebase');
       await signOut(auth);
     } catch (e) {
       console.log('[SNIPE] Firebase not configured — mock logout');
     }
+    invalidateCache();
     await cancelAllNotifications();
     router.replace('/auth/login');
+  };
+
+  const handleCategoryPress = async (categoryName: string) => {
+    setSelectedCategory(categoryName);
+    setShowCategoryDetail(true);
+
+    // Show cached data immediately if available
+    const currentUid = auth.currentUser?.uid;
+    if (!currentUid) return;
+
+    const catCacheKey = CacheKeys.categoryHistory(currentUid, categoryName);
+    const cached = getCached<CategoryHistoryQuestion[]>(catCacheKey);
+    if (cached !== undefined) {
+      setCategoryHistory(cached);
+    } else {
+      setCategoryHistory(null);
+    }
+
+    // Fetch fresh data in background
+    try {
+      const history = await getCategoryHistory(currentUid, categoryName);
+      setCache(catCacheKey, history);
+      setCategoryHistory(history);
+    } catch (e) {
+      console.log('[SNIPE] Error fetching category history:', e);
+      if (cached === undefined) setCategoryHistory([]);
+    }
   };
 
   const performAccountDeletion = async () => {
@@ -136,6 +166,7 @@ export default function AccountTab() {
       if (user) {
         await deleteUser(user);
       }
+      invalidateCache();
       await cancelAllNotifications();
       router.replace('/auth/login');
     } catch (e: any) {
@@ -170,6 +201,7 @@ export default function AccountTab() {
       await reauthenticateWithCredential(user, credential);
       await deleteUser(user);
       setShowReauthModal(false);
+      invalidateCache();
       await cancelAllNotifications();
       router.replace('/auth/login');
     } catch (e: any) {
@@ -256,7 +288,7 @@ export default function AccountTab() {
         }}>
           TODAY'S REVIEW
         </Text>
-        {missedQuestions === null ? (
+        {reviewQuestions === null ? (
           <Pressable
             onPress={() => router.push('/game')}
             style={{
@@ -271,7 +303,7 @@ export default function AccountTab() {
               Play the game first
             </Text>
           </Pressable>
-        ) : missedQuestions.length === 0 ? (
+        ) : reviewQuestions.length === 0 ? (
           <View style={{
             borderWidth: 1,
             borderColor: '#1A1A1A',
@@ -280,11 +312,11 @@ export default function AccountTab() {
             alignItems: 'center',
           }}>
             <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#888888' }}>
-              No missed questions
+              No questions to review
             </Text>
           </View>
         ) : (
-          <MissedQuestionsCarousel missedQuestions={missedQuestions} />
+          <GameReviewCarousel reviewQuestions={reviewQuestions} />
         )}
 
         <View style={{ height: 1, backgroundColor: '#1A1A1A', marginVertical: 24 }} />
@@ -300,13 +332,24 @@ export default function AccountTab() {
         }}>
           YOUR STATS
         </Text>
-        {displayCategories.map((cat) => (
-          <StatCard key={cat.name} name={cat.name} accuracy={cat.accuracy} avgTime={cat.avgTime} />
-        ))}
+        {displayCategories.map((cat) => {
+          const stats = profile?.categoryStats?.[cat.name];
+          return (
+            <StatCard
+              key={cat.name}
+              name={cat.name}
+              accuracy={cat.accuracy}
+              avgTime={cat.avgTime}
+              correct={stats?.correct}
+              total={stats?.total}
+              onPress={() => handleCategoryPress(cat.name)}
+            />
+          );
+        })}
 
         <View style={{ height: 1, backgroundColor: '#1A1A1A', marginVertical: 24 }} />
 
-        {/* Weekly Stats */}
+        {/* Personal Bests */}
         <Text style={{
           fontFamily: 'Urbanist_700Bold',
           fontSize: 12,
@@ -315,153 +358,70 @@ export default function AccountTab() {
           textTransform: 'uppercase',
           marginBottom: 16,
         }}>
-          THIS WEEK
+          PERSONAL BEST
         </Text>
 
-        {!weeklyStats ? (
-          <View style={{ gap: 10, marginBottom: 0 }}>
-            <SkeletonLoader width={'100%' as any} height={56} borderRadius={12} />
-            <SkeletonLoader width={'100%' as any} height={56} borderRadius={12} />
-            <SkeletonLoader width={'100%' as any} height={56} borderRadius={12} />
-          </View>
-        ) : weeklyStats.gamesThisWeek === 0 ? (
-          <View style={{
-            borderWidth: 1,
-            borderColor: '#1A1A1A',
-            borderRadius: 12,
-            padding: 20,
-            alignItems: 'center',
-          }}>
-            <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#888888' }}>
-              No games played this week yet.
-            </Text>
+        {!personalBests ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            {[0, 1, 2, 3].map((i) => (
+              <View key={i} style={{ width: '48%' }}>
+                <SkeletonLoader width={'100%' as any} height={80} borderRadius={12} />
+              </View>
+            ))}
           </View>
         ) : (
-          <View style={{ gap: 10 }}>
-            {/* Score */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             <View style={{
-              backgroundColor: '#0A0A0A',
-              borderWidth: 1,
-              borderColor: '#1A1A1A',
+              width: '48%',
+              backgroundColor: '#111111',
               borderRadius: 12,
               padding: 16,
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
             }}>
-              <View>
-                <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 12, color: '#888888', marginBottom: 4 }}>
-                  Score
-                </Text>
-                <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 20, color: '#FFFFFF' }}>
-                  {weeklyStats.score.avg} <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 13, color: '#888888' }}>avg</Text>
-                </Text>
-              </View>
-              {weeklyStats.score.delta !== null && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Text style={{
-                    fontFamily: 'Urbanist_700Bold',
-                    fontSize: 13,
-                    color: weeklyStats.score.delta > 0 ? '#22C55E' : weeklyStats.score.delta < 0 ? '#EF4444' : '#888888',
-                  }}>
-                    {weeklyStats.score.delta > 0 ? '+' : ''}{weeklyStats.score.delta} from last week
-                  </Text>
-                  <Text style={{
-                    fontSize: 14,
-                    color: weeklyStats.score.delta > 0 ? '#22C55E' : weeklyStats.score.delta < 0 ? '#EF4444' : '#888888',
-                  }}>
-                    {weeklyStats.score.delta > 0 ? '\u2191' : weeklyStats.score.delta < 0 ? '\u2193' : ''}
-                  </Text>
-                </View>
-              )}
+              <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 11, color: '#888888', marginBottom: 6 }}>
+                BEST GAME
+              </Text>
+              <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 24, color: '#FFFFFF' }}>
+                {personalBests.bestScore ?? '\u2014'}
+              </Text>
             </View>
-
-            {/* Speed */}
             <View style={{
-              backgroundColor: '#0A0A0A',
-              borderWidth: 1,
-              borderColor: '#1A1A1A',
+              width: '48%',
+              backgroundColor: '#111111',
               borderRadius: 12,
               padding: 16,
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
             }}>
-              <View>
-                <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 12, color: '#888888', marginBottom: 4 }}>
-                  Speed
-                </Text>
-                <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 20, color: '#FFFFFF' }}>
-                  {weeklyStats.speed.avg}s <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 13, color: '#888888' }}>avg</Text>
-                </Text>
-              </View>
-              {weeklyStats.speed.delta !== null && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Text style={{
-                    fontFamily: 'Urbanist_700Bold',
-                    fontSize: 13,
-                    color: weeklyStats.speed.delta < 0 ? '#22C55E' : weeklyStats.speed.delta > 0 ? '#EF4444' : '#888888',
-                  }}>
-                    {weeklyStats.speed.delta > 0 ? '+' : ''}{weeklyStats.speed.delta}s from last week
-                  </Text>
-                  <Text style={{
-                    fontSize: 14,
-                    color: weeklyStats.speed.delta < 0 ? '#22C55E' : weeklyStats.speed.delta > 0 ? '#EF4444' : '#888888',
-                  }}>
-                    {weeklyStats.speed.delta < 0 ? '\u2191' : weeklyStats.speed.delta > 0 ? '\u2193' : ''}
-                  </Text>
-                </View>
-              )}
+              <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 11, color: '#888888', marginBottom: 6 }}>
+                FASTEST GAME per question
+              </Text>
+              <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 24, color: '#FFFFFF' }}>
+                {personalBests.fastestAvgSpeed !== null ? `${personalBests.fastestAvgSpeed}s` : '\u2014'}
+              </Text>
             </View>
-
-            {/* Rank */}
             <View style={{
-              backgroundColor: '#0A0A0A',
-              borderWidth: 1,
-              borderColor: '#1A1A1A',
+              width: '48%',
+              backgroundColor: '#111111',
               borderRadius: 12,
               padding: 16,
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
             }}>
-              <View>
-                <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 12, color: '#888888', marginBottom: 4 }}>
-                  Rank in group
-                </Text>
-                <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 20, color: '#FFFFFF' }}>
-                  {weeklyStats.rank.current !== null ? `#${weeklyStats.rank.current}` : '\u2014'}
-                </Text>
-              </View>
-              {weeklyStats.rank.current !== null && weeklyStats.rank.previous !== null && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <Text style={{
-                    fontFamily: 'Urbanist_700Bold',
-                    fontSize: 13,
-                    color: weeklyStats.rank.current < weeklyStats.rank.previous
-                      ? '#22C55E'
-                      : weeklyStats.rank.current > weeklyStats.rank.previous
-                        ? '#EF4444'
-                        : '#888888',
-                  }}>
-                    was #{weeklyStats.rank.previous} last week
-                  </Text>
-                  <Text style={{
-                    fontSize: 14,
-                    color: weeklyStats.rank.current < weeklyStats.rank.previous
-                      ? '#22C55E'
-                      : weeklyStats.rank.current > weeklyStats.rank.previous
-                        ? '#EF4444'
-                        : '#888888',
-                  }}>
-                    {weeklyStats.rank.current < weeklyStats.rank.previous
-                      ? '\u2191'
-                      : weeklyStats.rank.current > weeklyStats.rank.previous
-                        ? '\u2193'
-                        : ''}
-                  </Text>
-                </View>
-              )}
+              <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 11, color: '#888888', marginBottom: 6 }}>
+                TOTAL WINS
+              </Text>
+              <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 24, color: '#FFFFFF' }}>
+                {personalBests.totalWins}
+              </Text>
+            </View>
+            <View style={{
+              width: '48%',
+              backgroundColor: '#111111',
+              borderRadius: 12,
+              padding: 16,
+            }}>
+              <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 11, color: '#888888', marginBottom: 6 }}>
+                GLOBAL WINS
+              </Text>
+              <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 24, color: '#FFFFFF' }}>
+                {personalBests.globalWins}
+              </Text>
             </View>
           </View>
         )}
@@ -588,10 +548,11 @@ export default function AccountTab() {
                   const available = await checkUsernameAvailable(trimmed);
                   if (!available) { setUsernameError('Username is already taken'); setUsernameSaving(false); return; }
 
-                  const uid = auth.currentUser?.uid;
-                  if (uid) {
-                    await updateUsername(uid, trimmed);
-                    setProfile((prev) => prev ? { ...prev, username: trimmed } : prev);
+                  const currentUid = auth.currentUser?.uid;
+                  if (currentUid) {
+                    await updateUsername(currentUid, trimmed);
+                    invalidateCache('account:');
+                    refetchAccount();
                   }
                   setShowEditUsername(false);
                 } catch (e) {
@@ -700,6 +661,14 @@ export default function AccountTab() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Category Detail Modal */}
+      <CategoryDetailModal
+        visible={showCategoryDetail}
+        category={selectedCategory}
+        onClose={() => setShowCategoryDetail(false)}
+        questions={categoryHistory}
+      />
 
       {/* Re-authenticate for Account Deletion Modal */}
       <Modal visible={showReauthModal} transparent animationType="slide">

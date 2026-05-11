@@ -11,12 +11,14 @@ import {
   where,
   getDocs,
   limit,
+  orderBy,
   serverTimestamp,
   arrayUnion,
   increment,
   Timestamp,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, functions } from './firebase';
+import { httpsCallable } from 'firebase/functions';
 import { getTodayDateString, getWeekDateRange } from './gameUtils';
 import { normalizeCategory } from './constants';
 
@@ -265,6 +267,72 @@ export async function saveGameResult(
       totalScore: score,
       playerCount: 1,
     });
+  }
+}
+
+// ─── Server-Side Scoring ────────────────────────────────────────────
+
+interface AnswerInput {
+  questionId: string;
+  selectedAnswer: string | null;
+  timeRemaining: number;
+}
+
+/**
+ * Submits game answers to the server for authoritative scoring.
+ * The server validates answers, computes the score, and persists everything.
+ * Falls back to client-side saveGameResult on any server error.
+ *
+ * Returns the server-computed score, or the client-computed score on fallback.
+ */
+export async function submitGameResultToServer(
+  userId: string,
+  date: string,
+  clientScore: number,
+  answers: AnswerInput[],
+  questionEntries: QuestionEntry[],
+): Promise<{ score: number; usedServer: boolean }> {
+  try {
+    const submitGameResult = httpsCallable<
+      { date: string; answers: AnswerInput[] },
+      { score: number; questions: QuestionEntry[] }
+    >(functions, 'submitGameResult');
+
+    const result = await submitGameResult({ date, answers });
+    const serverScore = result.data.score;
+
+    if (serverScore !== clientScore) {
+      logRemote('score_mismatch', {
+        userId,
+        date,
+        clientScore,
+        serverScore,
+      });
+    }
+
+    return { score: serverScore, usedServer: true };
+  } catch (err: any) {
+    const code = err?.code ?? '';
+    const message = err?.message ?? String(err);
+
+    // If the server says we already played today, don't fallback — just report it
+    if (code === 'functions/already-exists' || code === 'already-exists') {
+      logRemote('server_duplicate', { userId, date, clientScore });
+      return { score: clientScore, usedServer: false };
+    }
+
+    logRemote('server_submit_failed_fallback', {
+      userId,
+      date,
+      clientScore,
+      errorCode: code,
+      errorMessage: message,
+    });
+
+    // Fallback: save directly from the client
+    console.log('[SNIPE] Server scoring failed, falling back to client save:', message);
+    await saveGameResult(userId, date, clientScore, questionEntries);
+    return { score: clientScore, usedServer: false };
   }
 }
 
@@ -718,6 +786,140 @@ export async function getTodayMissedQuestions(
   return missed;
 }
 
+// ─── Full Game Review ───────────────────────────────────────────────
+
+export interface ReviewQuestion {
+  questionId: string;
+  date: string;
+  category: string;
+  questionText: string;
+  selectedAnswer: string;
+  correctAnswer: string;
+  timeRemaining: number;
+  correct: boolean;
+}
+
+/**
+ * Fetches ALL questions from today's game for a user (correct + wrong).
+ * Returns null if the user hasn't played today.
+ */
+export async function getTodayGameReview(
+  userId: string,
+): Promise<ReviewQuestion[] | null> {
+  const today = getTodayDateString();
+
+  const q = query(
+    collection(db, 'gameResults'),
+    where('userId', '==', userId),
+    where('date', '==', today),
+    limit(1),
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+
+  const result = snap.docs[0].data() as GameResult;
+  const dailyQs = await getTodayQuestions(today);
+
+  const review: ReviewQuestion[] = [];
+  for (const entry of result.questions) {
+    const matchingQ = dailyQs.find((dq) => dq.id === entry.questionId);
+    if (matchingQ) {
+      review.push({
+        questionId: entry.questionId,
+        date: today,
+        category: entry.category,
+        questionText: matchingQ.question,
+        selectedAnswer: entry.selectedAnswer ?? 'No answer',
+        correctAnswer: matchingQ.answer,
+        timeRemaining: entry.timeRemaining,
+        correct: entry.correct,
+      });
+    }
+  }
+
+  return review;
+}
+
+// ─── Category History ───────────────────────────────────────────────
+
+export interface CategoryHistoryQuestion {
+  questionId: string;
+  date: string;
+  category: string;
+  questionText: string;
+  selectedAnswer: string;
+  correctAnswer: string;
+  timeRemaining: number;
+  correct: boolean;
+}
+
+/**
+ * Fetches the last N questions a user answered in a specific category (all time).
+ * Queries gameResults, filters by normalized category, sorts by date desc, takes first `count`.
+ * Batch-fetches dailyQuestions docs for full question text.
+ */
+export async function getCategoryHistory(
+  userId: string,
+  category: string,
+  count: number = 7,
+): Promise<CategoryHistoryQuestion[]> {
+  const normalizedCat = normalizeCategory(category);
+
+  // Fetch all game results for this user
+  const q = query(
+    collection(db, 'gameResults'),
+    where('userId', '==', userId),
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return [];
+
+  // Flatten question entries, filter by category, attach date
+  const entries: Array<{ entry: QuestionEntry; date: string }> = [];
+  for (const d of snap.docs) {
+    const game = d.data() as GameResult;
+    for (const entry of game.questions) {
+      if (normalizeCategory(entry.category) === normalizedCat) {
+        entries.push({ entry, date: game.date });
+      }
+    }
+  }
+
+  // Sort by date descending, take first `count`
+  entries.sort((a, b) => b.date.localeCompare(a.date));
+  const recent = entries.slice(0, count);
+  if (recent.length === 0) return [];
+
+  // Batch-fetch unique dailyQuestions docs for question text
+  const uniqueDates = Array.from(new Set(recent.map((r) => r.date)));
+  const dailyQsMap = new Map<string, QuizQuestion[]>();
+  await Promise.all(
+    uniqueDates.map(async (date) => {
+      const qs = await getTodayQuestions(date);
+      dailyQsMap.set(date, qs);
+    }),
+  );
+
+  const history: CategoryHistoryQuestion[] = [];
+  for (const { entry, date } of recent) {
+    const dailyQs = dailyQsMap.get(date) ?? [];
+    const matchingQ = dailyQs.find((dq) => dq.id === entry.questionId);
+    if (matchingQ) {
+      history.push({
+        questionId: entry.questionId,
+        date,
+        category: entry.category,
+        questionText: matchingQ.question,
+        selectedAnswer: entry.selectedAnswer ?? 'No answer',
+        correctAnswer: matchingQ.answer,
+        timeRemaining: entry.timeRemaining,
+        correct: entry.correct,
+      });
+    }
+  }
+
+  return history;
+}
+
 // ─── Weekly Stats ───────────────────────────────────────────────────
 
 export interface WeeklyStats {
@@ -899,4 +1101,127 @@ export async function getGroupAvgForDate(
 
   if (playerCount === 0) return null;
   return Math.round(totalScore / playerCount);
+}
+
+// ─── Global Top 3 ───────────────────────────────────────────────────
+
+export interface GlobalTopPlayer {
+  username: string;
+  score: number;
+}
+
+/**
+ * Fetches the top 3 scores globally for a given date.
+ * Queries gameResults for the date, sorts by score desc, takes top 3,
+ * then batch-fetches usernames from the users collection.
+ */
+export async function getGlobalTop3(date: string): Promise<GlobalTopPlayer[]> {
+  const q = query(
+    collection(db, 'gameResults'),
+    where('date', '==', date),
+    orderBy('score', 'desc'),
+    limit(3),
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return [];
+
+  const results = snap.docs.map((d) => d.data() as GameResult);
+
+  // Batch-fetch usernames
+  const userDocs = await Promise.all(
+    results.map((r) => getDoc(doc(db, 'users', r.userId))),
+  );
+
+  return results.map((r, i) => {
+    const userData = userDocs[i].exists() ? (userDocs[i].data() as UserProfile) : null;
+    return {
+      username: userData?.username ?? 'unknown',
+      score: r.score,
+    };
+  });
+}
+
+// ─── Personal Bests ─────────────────────────────────────────────────
+
+export interface PersonalBests {
+  bestScore: number | null;
+  fastestAvgSpeed: number | null;
+  totalWins: number;
+  globalWins: number;
+}
+
+/**
+ * Computes personal best stats for a user:
+ * - bestScore: highest single-game score
+ * - fastestAvgSpeed: lowest avg seconds per question across all games
+ * - totalWins: from UserProfile.totalWins (group wins)
+ * - globalWins: number of days the user placed #1 globally
+ */
+export async function getPersonalBests(userId: string): Promise<PersonalBests> {
+  // Fetch all game results for this user
+  const gamesQuery = query(
+    collection(db, 'gameResults'),
+    where('userId', '==', userId),
+  );
+  const [gamesSnap, userProfile] = await Promise.all([
+    getDocs(gamesQuery),
+    getUserProfile(userId),
+  ]);
+
+  let bestScore: number | null = null;
+  let fastestAvgSpeed: number | null = null;
+  const dateScores: Array<{ date: string; score: number }> = [];
+
+  for (const d of gamesSnap.docs) {
+    const game = d.data() as GameResult;
+
+    // Best score
+    if (bestScore === null || game.score > bestScore) {
+      bestScore = game.score;
+    }
+
+    // Fastest avg speed (lowest avg time per question)
+    if (game.questions.length > 0) {
+      const totalTime = game.questions.reduce((sum, q) => sum + (8 - q.timeRemaining), 0);
+      const avgSpeed = Math.round((totalTime / game.questions.length) * 10) / 10;
+      if (fastestAvgSpeed === null || avgSpeed < fastestAvgSpeed) {
+        fastestAvgSpeed = avgSpeed;
+      }
+    }
+
+    dateScores.push({ date: game.date, score: game.score });
+  }
+
+  // Count global wins: for each date the user played, check if they were #1
+  let globalWins = 0;
+  const uniqueDates = Array.from(new Set(dateScores.map((ds) => ds.date)));
+
+  // Check each date — query top 1 score globally
+  await Promise.all(
+    uniqueDates.map(async (date) => {
+      const userScore = dateScores.find((ds) => ds.date === date)?.score ?? 0;
+      if (userScore === 0) return;
+
+      const topQuery = query(
+        collection(db, 'gameResults'),
+        where('date', '==', date),
+        orderBy('score', 'desc'),
+        limit(1),
+      );
+      const topSnap = await getDocs(topQuery);
+      if (!topSnap.empty) {
+        const topResult = topSnap.docs[0].data() as GameResult;
+        if (topResult.userId === userId) {
+          globalWins += 1;
+        }
+      }
+    }),
+  );
+
+  return {
+    bestScore,
+    fastestAvgSpeed,
+    totalWins: userProfile?.totalWins ?? 0,
+    globalWins,
+  };
 }

@@ -1,19 +1,26 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, Pressable, ScrollView, Modal, TextInput } from 'react-native';
+import { View, Text, Pressable, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { Plus, Users, Info } from 'lucide-react-native';
+import { Plus, Users, Info, Share2 } from 'lucide-react-native';
 import SnipeWordmark from '../../components/SnipeWordmark';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import { getMidnightCountdown, getTodayDateString, isQuizWindowOpen, getNextQuizCountdown } from '../../lib/gameUtils';
-import { createGroup, joinGroup, getUserGroups, getUserGameForDate, getGroupAvgForDate, getDailyGlobalAvg } from '../../lib/firestore';
+import { createGroup, joinGroup, getUserGroups, getUserGameForDate, getGroupAvgForDate, getDailyGlobalAvg, getGlobalTop3, type GlobalTopPlayer, type GameResult } from '../../lib/firestore';
 import { auth } from '../../lib/firebase';
+import { useCachedFetch, CacheKeys, invalidateCache } from '../../lib/cache';
+
+interface TodayTabData {
+  gameResult: GameResult | null;
+  groups: Array<{ id: string; name: string; memberCount: number }>;
+  globalAvg: number | null;
+  groupAvg: number | null;
+  globalTop3: GlobalTopPlayer[];
+}
 
 export default function TodayTab() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [hasPlayedToday, setHasPlayedToday] = useState(false);
   const [countdown, setCountdown] = useState(getNextQuizCountdown());
   const [quizOpen, setQuizOpen] = useState(isQuizWindowOpen());
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -23,48 +30,58 @@ export default function TodayTab() {
   const [modalLoading, setModalLoading] = useState(false);
   const [modalSuccess, setModalSuccess] = useState(false);
   const [modalError, setModalError] = useState('');
-  const [userGroups, setUserGroups] = useState<Array<{ id: string; name: string; memberCount: number }>>([]);
-  const [todayScore, setTodayScore] = useState<number | null>(null);
-  const [groupAvg, setGroupAvg] = useState<number | null>(null);
-  const [appAvg, setAppAvg] = useState<number | null>(null);
 
-  // Reload user data (played status + groups) every time the tab is focused
+  const uid = auth.currentUser?.uid ?? '';
+  const todayDate = getTodayDateString();
+  const cacheKey = CacheKeys.todayTab(uid, todayDate);
+
+  const fetchTodayData = useCallback(async (): Promise<TodayTabData> => {
+    const currentUid = auth.currentUser?.uid;
+    if (!currentUid) {
+      return { gameResult: null, groups: [], globalAvg: null, groupAvg: null, globalTop3: [] };
+    }
+    const date = getTodayDateString();
+    const [gameResult, groups, globalAvg] = await Promise.all([
+      getUserGameForDate(currentUid, date),
+      getUserGroups(currentUid),
+      getDailyGlobalAvg(date),
+    ]);
+
+    let groupAvg: number | null = null;
+    let top3: GlobalTopPlayer[] = [];
+
+    if (gameResult) {
+      const promises: Promise<void>[] = [];
+      if (groups.length > 0) {
+        promises.push(
+          getGroupAvgForDate(groups[0].id, date).then((avg) => { groupAvg = avg; }),
+        );
+      }
+      promises.push(
+        getGlobalTop3(date).then((t) => { top3 = t; }),
+      );
+      await Promise.all(promises);
+    }
+
+    return { gameResult, groups, globalAvg, groupAvg, globalTop3: top3 };
+  }, []);
+
+  const { data, loading, refetch } = useCachedFetch<TodayTabData>(cacheKey, fetchTodayData);
+
+  // Derive display values from cached data
+  const hasPlayedToday = !!data?.gameResult;
+  const todayScore = data?.gameResult?.score ?? null;
+  const todayGame = data?.gameResult ?? null;
+  const userGroups = data?.groups ?? [];
+  const appAvg = data?.globalAvg ?? null;
+  const groupAvg = data?.groupAvg ?? null;
+  const globalTop3 = data?.globalTop3 ?? [];
+
+  // Reload on tab focus
   useFocusEffect(
     useCallback(() => {
-      let cancelled = false;
-      const load = async () => {
-        try {
-          const uid = auth.currentUser?.uid;
-          if (uid) {
-            const todayDate = getTodayDateString();
-            const [todayGame, groups, globalAvg] = await Promise.all([
-              getUserGameForDate(uid, todayDate),
-              getUserGroups(uid),
-              getDailyGlobalAvg(todayDate),
-            ]);
-            if (!cancelled) {
-              if (todayGame) {
-                setHasPlayedToday(true);
-                setTodayScore(todayGame.score);
-                setAppAvg(globalAvg);
-                // Fetch group avg from first group
-                if (groups.length > 0) {
-                  getGroupAvgForDate(groups[0].id, todayDate).then((avg) => {
-                    if (!cancelled) setGroupAvg(avg);
-                  });
-                }
-              }
-              setUserGroups(groups);
-            }
-          }
-        } catch (e) {
-          console.log('[SNIPE] Error loading today tab:', e);
-        }
-        if (!cancelled) setLoading(false);
-      };
-      load();
-      return () => { cancelled = true; };
-    }, [])
+      refetch();
+    }, [refetch])
   );
 
   // Countdown timer + quiz window check
@@ -78,41 +95,47 @@ export default function TodayTab() {
 
   // Listen for game completion via global flag
   useEffect(() => {
-    const checkGameComplete = async () => {
+    const checkGameComplete = () => {
       if ((global as any).__snipeGameComplete) {
-        setHasPlayedToday(true);
         (global as any).__snipeGameComplete = false;
-        // Fetch score stats after game completion
-        const uid = auth.currentUser?.uid;
-        if (uid) {
-          const todayDate = getTodayDateString();
-          const [todayGame, globalAvg] = await Promise.all([
-            getUserGameForDate(uid, todayDate),
-            getDailyGlobalAvg(todayDate),
-          ]);
-          if (todayGame) setTodayScore(todayGame.score);
-          setAppAvg(globalAvg);
-          if (userGroups.length > 0) {
-            const avg = await getGroupAvgForDate(userGroups[0].id, todayDate);
-            setGroupAvg(avg);
-          }
-        }
+        invalidateCache('today:');
+        invalidateCache('leaderboard:');
+        invalidateCache('account:');
+        refetch();
       }
     };
     const interval = setInterval(checkGameComplete, 500);
     return () => clearInterval(interval);
-  }, [userGroups]);
+  }, [refetch]);
+
+  const handleShareScore = async () => {
+    if (!todayGame) return;
+    const correctCount = todayGame.questions.filter((q) => q.correct).length;
+    const emojis = todayGame.questions.map((q) => q.correct ? '\u{1F7E2}' : '\u{1F534}').join('');
+    const totalTime = todayGame.questions.reduce((sum, q) => sum + (8 - q.timeRemaining), 0);
+    const avgSpeed = todayGame.questions.length > 0
+      ? Math.round((totalTime / todayGame.questions.length) * 10) / 10
+      : 0;
+
+    const text = `Snipe ${todayGame.date}\n${emojis}\n${correctCount}/7 · ${todayGame.score} pts · ${avgSpeed}s avg`;
+
+    try {
+      await Share.share({ message: text });
+    } catch (_) {}
+  };
 
   const handleCreateGroup = async () => {
     setModalLoading(true);
     setModalSuccess(false);
     setModalError('');
     try {
-      const uid = auth.currentUser?.uid;
-      if (!uid) throw new Error('Not signed in');
-      const result = await createGroup(uid, modalInput.trim());
-      setUserGroups((prev) => [...prev, { id: result.groupId, name: modalInput.trim(), memberCount: 1 }]);
+      const currentUid = auth.currentUser?.uid;
+      if (!currentUid) throw new Error('Not signed in');
+      await createGroup(currentUid, modalInput.trim());
+      invalidateCache('today:');
+      invalidateCache('leaderboard:');
       setModalSuccess(true);
+      refetch();
     } catch (e: any) {
       console.log('[SNIPE] Error creating group:', e);
       setModalError('Failed to create group');
@@ -126,19 +149,18 @@ export default function TodayTab() {
     setModalSuccess(false);
     setModalError('');
     try {
-      const uid = auth.currentUser?.uid;
-      if (!uid) throw new Error('Not signed in');
-      const result = await joinGroup(uid, modalInput.trim());
+      const currentUid = auth.currentUser?.uid;
+      if (!currentUid) throw new Error('Not signed in');
+      const result = await joinGroup(currentUid, modalInput.trim());
       if (!result) {
         setModalError('Invalid invite code');
         setModalLoading(false);
         return;
       }
-      setUserGroups((prev) => {
-        if (prev.some((g) => g.id === result.groupId)) return prev;
-        return [...prev, { id: result.groupId, name: result.groupName, memberCount: 0 }];
-      });
+      invalidateCache('today:');
+      invalidateCache('leaderboard:');
       setModalSuccess(true);
+      refetch();
     } catch (e: any) {
       console.log('[SNIPE] Error joining group:', e);
       setModalError('Failed to join group');
@@ -189,7 +211,7 @@ export default function TodayTab() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#000000' }}>
-      <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 16 }}>
+      <ScrollView style={{ flex: 1, paddingHorizontal: 20, paddingTop: 16 }}>
         {/* Header */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 40 }}>
           <SnipeWordmark size="md" />
@@ -209,6 +231,7 @@ export default function TodayTab() {
         {/* Date */}
         <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#888888', marginBottom: 32 }}>
           {today}
+          
         </Text>
 
         {/* Quiz available: anyone who hasn't played today can play */}
@@ -232,12 +255,20 @@ export default function TodayTab() {
             </Text>
           </View>
         ) : (
+          
           <View style={{ alignItems: 'center' }}>
-            <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#888888', marginBottom: 8 }}>
-               next quiz  in
-            </Text>
+           
+             
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#888888' }}>
+                next quiz in
+              </Text>
+             
+            </View>
             <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 48, color: '#FFFFFF', fontVariant: ['tabular-nums'] }}>
               {countdown}
+
+              
             </Text>
 
             {/* Score Stats Grid */}
@@ -285,7 +316,51 @@ export default function TodayTab() {
                 </Text>
               </View>
             </View>
+            <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 28 }} onPress={handleShareScore} hitSlop={8}>
+              <Text style={{ fontFamily: 'Urbanist_400Regular', fontSize: 14, color: '#888888' }}>Share Score</Text>
+                <Share2 color="#888888" size={16} />
+              </Pressable>
           </View>
+        )}
+
+        {/* Global Top 3 — only visible after playing */}
+        {hasPlayedToday && globalTop3.length > 0 && (
+          <>
+            <Text style={{
+              fontFamily: 'Urbanist_700Bold',
+              fontSize: 12,
+              color: '#888888',
+              letterSpacing: 2,
+              textTransform: 'uppercase',
+              marginTop: 40,
+              marginBottom: 14,
+            }}>
+              GLOBAL TOP 3
+            </Text>
+            <View style={{ gap: 8 }}>
+              {globalTop3.map((player, i) => (
+                <View
+                  key={i}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    backgroundColor: '#111111',
+                    borderRadius: 12,
+                  }}
+                >
+                  <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 15, color: '#FFFFFF' }}>
+                    {i + 1}. {player.username}
+                  </Text>
+                  <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 15, color: '#FFFFFF' }}>
+                    {player.score}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </>
         )}
 
         {/* Your Groups */}
@@ -344,12 +419,14 @@ export default function TodayTab() {
           )}
         </View>
 
-      </View>
+        <View style={{ height: 40 }} />
+      </ScrollView>
 
       {/* Create Group Modal */}
-      <Modal visible={showCreateModal} transparent animationType="slide">
-        <Pressable onPress={closeModal} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.7)' }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: '#111111', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 }}>
+      <Modal visible={showCreateModal} transparent animationType="fade">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <Pressable onPress={closeModal} style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.85)', paddingHorizontal: 24 }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: '#111111', borderRadius: 20, padding: 28, width: '100%', borderWidth: 1, borderColor: '#1A1A1A' }}>
             <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 20, color: '#FFFFFF', marginBottom: 20 }}>
               Create Group
             </Text>
@@ -398,12 +475,14 @@ export default function TodayTab() {
             )}
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Join Group Modal */}
-      <Modal visible={showJoinModal} transparent animationType="slide">
-        <Pressable onPress={closeModal} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.7)' }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: '#111111', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 }}>
+      <Modal visible={showJoinModal} transparent animationType="fade">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <Pressable onPress={closeModal} style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.85)', paddingHorizontal: 24 }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: '#111111', borderRadius: 20, padding: 28, width: '100%', borderWidth: 1, borderColor: '#1A1A1A' }}>
             <Text style={{ fontFamily: 'Urbanist_700Bold', fontSize: 20, color: '#FFFFFF', marginBottom: 20 }}>
               Join Group
             </Text>
@@ -453,6 +532,7 @@ export default function TodayTab() {
             )}
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* About Modal */}

@@ -1,15 +1,18 @@
-import { Text, View } from 'react-native';
+import { Text, View, Pressable } from 'react-native';
 
 interface StatCardProps {
   name: string;
   accuracy: number;
   avgTime: number;
+  correct?: number;
+  total?: number;
+  onPress?: () => void;
 }
 
-export default function StatCard({ name, accuracy, avgTime }: StatCardProps) {
+export default function StatCard({ name, accuracy, avgTime, correct, total, onPress }: StatCardProps) {
   const pct = Math.round(accuracy * 100);
 
-  return (
+  const content = (
     <View
       style={{
         backgroundColor: '#0F0F0F',
@@ -19,15 +22,29 @@ export default function StatCard({ name, accuracy, avgTime }: StatCardProps) {
       }}
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <Text
-          style={{
-            fontFamily: 'Urbanist_700Bold',
-            fontSize: 16,
-            color: '#FFFFFF',
-          }}
-        >
-          {name}
-        </Text>
+        <View>
+          <Text
+            style={{
+              fontFamily: 'Urbanist_700Bold',
+              fontSize: 16,
+              color: '#FFFFFF',
+            }}
+          >
+            {name}
+          </Text>
+          {correct !== undefined && total !== undefined && (
+            <Text
+              style={{
+                fontFamily: 'Urbanist_400Regular',
+                fontSize: 12,
+                color: '#888888',
+                marginTop: 2,
+              }}
+            >
+              {correct} of {total}
+            </Text>
+          )}
+        </View>
         <Text
           style={{
             fontFamily: 'Urbanist_400Regular',
@@ -70,6 +87,30 @@ export default function StatCard({ name, accuracy, avgTime }: StatCardProps) {
           {pct}%
         </Text>
       </View>
+
+      {onPress && (
+        <Text
+          style={{
+            fontFamily: 'Urbanist_400Regular',
+            fontSize: 11,
+            color: '#888888',
+            textAlign: 'right',
+            marginTop: 10,
+          }}
+        >
+          more info →
+        </Text>
+      )}
     </View>
   );
+
+  if (onPress) {
+    return (
+      <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+        {content}
+      </Pressable>
+    );
+  }
+
+  return content;
 }

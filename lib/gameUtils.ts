@@ -11,18 +11,15 @@ export interface GameSession {
   date: string;                 // today's date string e.g. "2026-03-27"
 }
 
-// Tiered speed scoring:
-//   0–3s elapsed (5–8s remaining) → 1.5x → 150 pts
-//   3–6s elapsed (2–5s remaining) → 1.25x → 125 pts
-//   6–8s elapsed (0–2s remaining) → 1.0x → 100 pts
-//   wrong / timeout → 0 pts
-// Max per question: 150. Max total (7 questions): 1050.
+// Time-proportional scoring:
+//   Correct: 100 base + floor(timeRemaining × 6) speed bonus
+//   Wrong / timeout: 0 pts
+//   Max speed bonus: 48 (at 8s remaining). Max per question: 148.
+//   Max total (7 questions): 1036.
+//   Correctness always wins: 2 perfect (296) < 3 slow (300).
 export function scoreForQuestion(correct: boolean, timeRemaining: number): number {
   if (!correct) return 0;
-  const elapsed = 8 - timeRemaining;
-  if (elapsed <= 3) return 150;
-  if (elapsed <= 6) return 125;
-  return 100;
+  return 100 + Math.floor(timeRemaining * 6);
 }
 
 export function calculateScore(results: QuestionResult[]): number {

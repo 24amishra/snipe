@@ -27,6 +27,8 @@ const CATEGORY_LOOKUP: Record<string, Category> = {};
 for (const cat of CATEGORIES) {
   CATEGORY_LOOKUP[cat.toLowerCase()] = cat;
 }
+// Aliases
+CATEGORY_LOOKUP['pop culture'] = 'Entertainment';
 
 /**
  * Normalize a category string to its canonical CATEGORIES form.
